@@ -1,0 +1,13 @@
+streamlit
+pandas
+numpy
+scikit-learn
+lightgbm
+joblib
+plotly
+matplotlib
+shap
+spacy
+deep-translator
+fpdf2
+Pillow
