@@ -43,7 +43,7 @@ st.markdown(
 
 @st.cache_resource
 def load_model():
-    return spacy.load("en_core_web_sm")
+    return spacy.blank("en")
 
 nlp = load_model()
 
