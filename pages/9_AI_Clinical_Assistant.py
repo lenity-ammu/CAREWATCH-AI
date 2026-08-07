@@ -21,14 +21,9 @@ st.set_page_config(
 @st.cache_resource
 def load_nlp_model():
 
-    nlp = spacy.load("en_core_web_sm")
+    nlp = spacy.blank("en")
 
-    # Make sure sentence boundaries are available
-    if (
-        "parser" not in nlp.pipe_names
-        and "senter" not in nlp.pipe_names
-        and "sentencizer" not in nlp.pipe_names
-    ):
+    if "sentencizer" not in nlp.pipe_names:
         nlp.add_pipe("sentencizer")
 
     return nlp
