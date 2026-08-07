@@ -1,24 +1,11 @@
 import streamlit as st
 import spacy
+import re
 
-from translator import translate_text
-# =====================================================
-# Initialize Session Variables
-# =====================================================
 
-conditions = st.session_state.get("conditions", [])
-
-risk = st.session_state.get("risk_factors", [])
-
-recommendations = st.session_state.get("recommendations", [])
-
-summary = st.session_state.get("clinical_summary", "")
-
-risk_level = st.session_state.get("risk_level", "Low")
-
-# ==========================================================
-# PAGE CONFIG (Must be first Streamlit command)
-# ==========================================================
+# ============================================================
+# PAGE CONFIG
+# ============================================================
 
 st.set_page_config(
     page_title="AI Clinical Assistant",
@@ -26,295 +13,65 @@ st.set_page_config(
     layout="wide"
 )
 
-lang = st.session_state.get("language", "English")
 
-st.title("🧠 " + translate_text("AI Clinical Assistant", lang))
-
-st.markdown(
-    translate_text(
-        "Analyze doctor's clinical notes using Natural Language Processing (NLP) and generate AI-powered clinical recommendations.",
-        lang
-    )
-)
-
-# ==========================================================
-# LOAD SPACY MODEL
-# ==========================================================
+# ============================================================
+# NLP MODEL
+# ============================================================
 
 @st.cache_resource
-def load_model():
-    return spacy.blank("en")
+def load_nlp_model():
 
-nlp = load_model()
+    nlp = spacy.load("en_core_web_sm")
 
-# ==========================================================
-# MEDICAL KNOWLEDGE BASE
-# ==========================================================
+    # Make sure sentence boundaries are available
+    if (
+        "parser" not in nlp.pipe_names
+        and "senter" not in nlp.pipe_names
+        and "sentencizer" not in nlp.pipe_names
+    ):
+        nlp.add_pipe("sentencizer")
 
-MEDICAL_DB = {
+    return nlp
 
-    "Diabetes":{
 
-        "keywords":[
-            "diabetes",
-            "glucose",
-            "hyperglycemia",
-            "hba1c"
-        ],
+nlp = load_nlp_model()
 
-        "recommendations":[
 
-            "Monitor HbA1c every 3 months.",
+# ============================================================
+# DEFAULT VALUES
+# ============================================================
 
-            "Maintain blood glucose control.",
+conditions = []
+risk = []
+recommendations = []
+risk_level = "Low"
+summary = ""
 
-            "Provide diabetic diet counselling.",
 
-            "Ensure medication adherence."
+# ============================================================
+# PAGE TITLE
+# ============================================================
 
-        ]
+st.title("🧠 AI Clinical Assistant")
 
-    },
-
-    "Chronic Kidney Disease":{
-
-        "keywords":[
-
-            "ckd",
-
-            "kidney",
-
-            "renal",
-
-            "creatinine"
-
-        ],
-
-        "recommendations":[
-
-            "Schedule nephrology follow-up.",
-
-            "Monitor kidney function.",
-
-            "Avoid nephrotoxic drugs.",
-
-            "Maintain hydration."
-
-        ]
-
-    },
-
-    "Heart Failure":{
-
-        "keywords":[
-
-            "heart failure",
-
-            "cardiac failure"
-
-        ],
-
-        "recommendations":[
-
-            "Cardiology consultation.",
-
-            "Reduce salt intake.",
-
-            "Daily weight monitoring.",
-
-            "Monitor fluid status."
-
-        ]
-
-    },
-
-    "Hypertension":{
-
-        "keywords":[
-
-            "hypertension",
-
-            "blood pressure"
-
-        ],
-
-        "recommendations":[
-
-            "Monitor blood pressure.",
-
-            "Reduce sodium intake.",
-
-            "Encourage regular exercise."
-
-        ]
-
-    },
-
-    "COPD":{
-
-        "keywords":[
-
-            "copd",
-
-            "chronic obstructive"
-
-        ],
-
-        "recommendations":[
-
-            "Smoking cessation.",
-
-            "Pulmonary rehabilitation.",
-
-            "Monitor oxygen saturation."
-
-        ]
-
-    },
-
-    "Pneumonia":{
-
-        "keywords":[
-
-            "pneumonia",
-
-            "lung infection"
-
-        ],
-
-        "recommendations":[
-
-            "Complete antibiotic therapy.",
-
-            "Maintain hydration.",
-
-            "Monitor respiratory status."
-
-        ]
-
-    },
-
-    "Sepsis":{
-
-        "keywords":[
-
-            "sepsis",
-
-            "infection"
-
-        ],
-
-        "recommendations":[
-
-            "Monitor infection markers.",
-
-            "Frequent vital monitoring.",
-
-            "Review antibiotic response."
-
-        ]
-
-    }
-
-}
-# ==========================================================
-# NLP FUNCTIONS
-# ==========================================================
-
-def detect_conditions(text):
-
-    text = text.lower()
-
-    detected = []
-
-    recommendations = []
-
-    doc = nlp(text)
-
-    processed_text = " ".join([token.text for token in doc])
-
-    for disease, data in MEDICAL_DB.items():
-
-        for keyword in data["keywords"]:
-
-            if keyword in processed_text:
-
-                if disease not in detected:
-
-                    detected.append(disease)
-
-                    recommendations.extend(data["recommendations"])
-
-                break
-
-    return detected, recommendations
-
-
-# ==========================================================
-# READMISSION RISK DETECTION
-# ==========================================================
-
-def detect_risk(text):
-
-    text = text.lower()
-
-    risks = []
-
-    risk_keywords = {
-
-        "Previous Hospital Admission":"previous admission",
-
-        "Poor Medication Adherence":"poor medication adherence",
-
-        "High HbA1c":"hba1c",
-
-        "Chronic Kidney Disease":"ckd",
-
-        "Heart Failure":"heart failure",
-
-        "Sepsis":"sepsis",
-
-        "COPD":"copd",
-
-        "Hypertension":"hypertension"
-
-    }
-
-    for label, keyword in risk_keywords.items():
-
-        if keyword in text:
-
-            risks.append(label)
-
-    return risks
-
-
-# ==========================================================
-# AI CLINICAL NOTES INPUT
-# ==========================================================
-
-st.markdown("---")
-
-st.subheader(
-    translate_text(
-        "Clinical Notes",
-        lang
-    )
+st.write(
+    "Analyze doctor's discharge summaries and clinical notes "
+    "to identify medical conditions, risk factors and "
+    "generate follow-up recommendations."
 )
 
+
+# ============================================================
+# CLINICAL NOTES
+# ============================================================
+
 notes = st.text_area(
-
-    translate_text(
-        "Enter Doctor's Clinical Notes",
-        lang
-    ),
-
+    "📝 Enter Clinical Notes",
     height=250,
-
     placeholder="""
 Patient has uncontrolled diabetes.
 
-Known CKD Stage III.
+Known CKD stage III.
 
 Previous admission due to heart failure.
 
@@ -322,39 +79,197 @@ HbA1c remains elevated.
 
 Poor medication adherence.
 
-Complains of breathlessness.
-
-Creatinine elevated.
+Complains of shortness of breath.
 """
-
 )
+
 
 analyze = st.button(
-
-    translate_text(
-        "Analyze Clinical Notes",
-        lang
-    ),
-
-    use_container_width=True
-
+    "🔍 Analyze Clinical Notes",
+    width="stretch"
 )
 
-# ==========================================================
-# AI ANALYSIS
-# ==========================================================
+
+# ============================================================
+# MEDICAL DATABASE
+# ============================================================
+
+MEDICAL_DB = {
+
+    "Diabetes": {
+        "keywords": [
+            "diabetes",
+            "glucose",
+            "hba1c",
+            "hyperglycemia"
+        ],
+        "recommendations": [
+            "Monitor HbA1c and blood glucose regularly.",
+            "Review diabetes medication adherence.",
+            "Provide appropriate diabetic diet counselling."
+        ]
+    },
+
+    "Chronic Kidney Disease": {
+        "keywords": [
+            "ckd",
+            "kidney disease",
+            "renal",
+            "creatinine"
+        ],
+        "recommendations": [
+            "Monitor renal function and serum creatinine.",
+            "Consider nephrology follow-up.",
+            "Review medications for renal safety."
+        ]
+    },
+
+    "Heart Failure": {
+        "keywords": [
+            "heart failure",
+            "cardiac failure"
+        ],
+        "recommendations": [
+            "Schedule cardiology follow-up.",
+            "Monitor weight and fluid status.",
+            "Review heart-failure medication adherence."
+        ]
+    },
+
+    "Hypertension": {
+        "keywords": [
+            "hypertension",
+            "high blood pressure",
+            "blood pressure"
+        ],
+        "recommendations": [
+            "Monitor blood pressure regularly.",
+            "Review antihypertensive medication adherence."
+        ]
+    },
+
+    "COPD": {
+        "keywords": [
+            "copd",
+            "chronic obstructive"
+        ],
+        "recommendations": [
+            "Monitor oxygen saturation.",
+            "Review inhaler compliance.",
+            "Consider pulmonary follow-up."
+        ]
+    },
+
+    "Pneumonia": {
+        "keywords": [
+            "pneumonia",
+            "lung infection"
+        ],
+        "recommendations": [
+            "Review treatment response.",
+            "Monitor respiratory status."
+        ]
+    },
+
+    "Sepsis": {
+        "keywords": [
+            "sepsis"
+        ],
+        "recommendations": [
+            "Monitor vital signs and infection markers.",
+            "Review response to antimicrobial treatment."
+        ]
+    }
+}
+
+
+# ============================================================
+# CONDITION DETECTION
+# ============================================================
+
+def detect_conditions(text):
+
+    text = text.lower()
+
+    detected = []
+    recommendations = []
+
+    doc = nlp(text)
+
+    clean_text = " ".join(
+        token.text for token in doc
+    )
+
+    for disease, info in MEDICAL_DB.items():
+
+        for keyword in info["keywords"]:
+
+            if keyword in clean_text:
+
+                detected.append(disease)
+
+                recommendations.extend(
+                    info["recommendations"]
+                )
+
+                break
+
+    return detected, recommendations
+
+
+# ============================================================
+# RISK DETECTION
+# ============================================================
+
+def detect_risk(text):
+
+    text = text.lower()
+
+    risk_factors = []
+
+    if "previous admission" in text:
+        risk_factors.append(
+            "Previous Hospital Admission"
+        )
+
+    if "poor medication adherence" in text:
+        risk_factors.append(
+            "Poor Medication Adherence"
+        )
+
+    if "hba1c" in text:
+        risk_factors.append(
+            "High HbA1c"
+        )
+
+    if "ckd" in text:
+        risk_factors.append(
+            "Chronic Kidney Disease"
+        )
+
+    if "heart failure" in text:
+        risk_factors.append(
+            "Heart Failure"
+        )
+
+    if "sepsis" in text:
+        risk_factors.append(
+            "Sepsis"
+        )
+
+    return risk_factors
+
+
+# ============================================================
+# ANALYSIS
+# ============================================================
 
 if analyze:
 
-    if notes.strip() == "":
+    if not notes.strip():
 
         st.warning(
-
-            translate_text(
-                "Please enter clinical notes.",
-                lang
-            )
-
+            "Please enter clinical notes before analysis."
         )
 
     else:
@@ -363,7 +278,81 @@ if analyze:
 
         risk = detect_risk(notes)
 
-        recommendations = sorted(list(set(recommendations)))
+        # ----------------------------------------------------
+        # TEXT STATISTICS
+        # ----------------------------------------------------
+
+        doc = nlp(notes)
+
+        num_tokens = len(doc)
+
+        # Do NOT depend on doc.sents
+        num_sentences = len(
+            [
+                s for s in re.split(
+                    r"[.!?]+",
+                    notes
+                )
+                if s.strip()
+            ]
+        )
+
+        num_words = len(
+            [
+                token
+                for token in doc
+                if token.is_alpha
+            ]
+        )
+
+        # ----------------------------------------------------
+        # RISK SCORE
+        # ----------------------------------------------------
+
+        risk_score = len(conditions) + len(risk)
+
+        if risk_score >= 6:
+
+            risk_level = "High"
+
+        elif risk_score >= 3:
+
+            risk_level = "Moderate"
+
+        else:
+
+            risk_level = "Low"
+
+        # ----------------------------------------------------
+        # RESULTS
+        # ----------------------------------------------------
+
+        st.markdown("---")
+
+        st.subheader(
+            "📊 Clinical Note Statistics"
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        c1.metric(
+            "Words",
+            num_words
+        )
+
+        c2.metric(
+            "Sentences",
+            num_sentences
+        )
+
+        c3.metric(
+            "Tokens",
+            num_tokens
+        )
+
+        # ----------------------------------------------------
+        # CONDITIONS + RISK
+        # ----------------------------------------------------
 
         st.markdown("---")
 
@@ -371,363 +360,129 @@ if analyze:
 
         with col1:
 
-            st.subheader("🩺 " + translate_text("Detected Conditions", lang))
+            st.subheader(
+                "🩺 Detected Medical Conditions"
+            )
 
-            if len(conditions)==0:
+            if conditions:
 
-                st.info(
-
-                    translate_text(
-                        "No medical conditions detected.",
-                        lang
-                    )
-
-                )
+                for condition in conditions:
+                    st.success(condition)
 
             else:
 
-                for item in conditions:
-
-                    st.success(item)
+                st.info(
+                    "No medical conditions detected."
+                )
 
         with col2:
 
-            st.subheader("⚠️ " + translate_text("Readmission Risk Factors", lang))
+            st.subheader(
+                "⚠️ Readmission Risk Factors"
+            )
 
-            if len(risk)==0:
+            if risk:
 
-                st.success(
-
-                    translate_text(
-                        "No major risk factors detected.",
-                        lang
-                    )
-
-                )
+                for factor in risk:
+                    st.error(factor)
 
             else:
 
-                for item in risk:
+                st.success(
+                    "No major risk factors detected."
+                )
 
-                    st.error(item)
-                    
-# ==========================================================
-# AI RECOMMENDATIONS
-# ==========================================================
+        # ----------------------------------------------------
+        # RECOMMENDATIONS
+        # ----------------------------------------------------
 
         st.markdown("---")
 
-        st.subheader("🤖 " + translate_text("AI Recommendations", lang))
+        st.subheader(
+            "🤖 AI Recommendations"
+        )
 
-        if len(recommendations) == 0:
+        unique_recommendations = sorted(
+            set(recommendations)
+        )
 
-            st.info(
-                translate_text(
-                    "No recommendations generated.",
-                    lang
+        if unique_recommendations:
+
+            for recommendation in unique_recommendations:
+
+                st.info(
+                    "✅ " + recommendation
                 )
-            )
 
         else:
 
-            for rec in recommendations:
+            st.info(
+                "No specific recommendations generated."
+            )
 
-                st.info("✅ " + rec)
-
-
-# ==========================================================
-# AI RISK SCORE
-# ==========================================================
+        # ----------------------------------------------------
+        # RISK ASSESSMENT
+        # ----------------------------------------------------
 
         st.markdown("---")
 
-        risk_score = len(conditions) + len(risk)
+        st.subheader(
+            "📊 AI Clinical Risk Assessment"
+        )
 
-        st.subheader("📊 " + translate_text("Clinical Risk Assessment", lang))
-
-        if risk_score >= 6:
-
-            risk_level = "High"
+        if risk_level == "High":
 
             st.error("🔴 HIGH RISK")
 
-        elif risk_score >= 3:
-
-            risk_level = "Moderate"
+        elif risk_level == "Moderate":
 
             st.warning("🟡 MODERATE RISK")
 
         else:
 
-            risk_level = "Low"
-
             st.success("🟢 LOW RISK")
 
-        st.progress(min(risk_score / 8, 1.0))
+        st.progress(
+            min(risk_score / 8, 1.0)
+        )
 
-
-# ==========================================================
-# AI CLINICAL SUMMARY
-# ==========================================================
+        # ----------------------------------------------------
+        # SUMMARY
+        # ----------------------------------------------------
 
         st.markdown("---")
 
-        st.subheader("🧠 " + translate_text("AI Clinical Summary", lang))
+        st.subheader(
+            "🧠 AI Clinical Summary"
+        )
 
-        if len(conditions) == 0:
+        if conditions:
 
             summary = (
-                "No significant chronic medical conditions were detected from the clinical notes."
+                f"The clinical notes indicate "
+                f"{', '.join(conditions)}. "
+            )
+
+            if risk:
+
+                summary += (
+                    f"Important readmission risk factors "
+                    f"include {', '.join(risk)}. "
+                )
+
+            summary += (
+                f"The rule-based clinical assessment "
+                f"classifies the documented risk as "
+                f"{risk_level.lower()}. "
+                f"Clinical findings should be reviewed "
+                f"by the treating healthcare professional."
             )
 
         else:
 
             summary = (
-                f"The patient presents with {', '.join(conditions)}. "
-            )
-
-            if len(risk) > 0:
-
-                summary += (
-                    f"Important readmission risk factors include {', '.join(risk)}. "
-                )
-
-            summary += (
-                f"The overall assessment indicates a {risk_level.lower()} likelihood of "
-                "30-day hospital readmission. Early follow-up, medication review and "
-                "appropriate specialist consultation are recommended."
+                "No major conditions were identified "
+                "from the supplied clinical notes."
             )
 
         st.success(summary)
-# ==========================================================
-# FOLLOW-UP PLAN
-# ==========================================================
-
-        st.markdown("---")
-
-        st.subheader("📅 " + translate_text("Suggested Follow-up Plan", lang))
-
-        plan = []
-
-        if "Diabetes" in conditions:
-            plan.append("✔ HbA1c review within 3 months")
-
-        if "Chronic Kidney Disease" in conditions:
-            plan.append("✔ Nephrology consultation")
-
-        if "Heart Failure" in conditions:
-            plan.append("✔ Cardiology follow-up")
-
-        if "Hypertension" in conditions:
-            plan.append("✔ Weekly blood pressure monitoring")
-
-        if "COPD" in conditions:
-            plan.append("✔ Pulmonary rehabilitation")
-
-        if "Sepsis" in conditions:
-            plan.append("✔ Infection monitoring")
-
-        if len(plan) == 0:
-            plan.append("✔ Routine outpatient follow-up")
-
-        for item in plan:
-
-            st.write(item)
-# ==========================================================
-# FOLLOW-UP PLAN
-# ==========================================================
-
-        st.markdown("---")
-
-        st.subheader("📅 " + translate_text("Suggested Follow-up Plan", lang))
-
-        plan = []
-
-        if "Diabetes" in conditions:
-            plan.append("✔ HbA1c review within 3 months")
-
-        if "Chronic Kidney Disease" in conditions:
-            plan.append("✔ Nephrology consultation")
-
-        if "Heart Failure" in conditions:
-            plan.append("✔ Cardiology follow-up")
-
-        if "Hypertension" in conditions:
-            plan.append("✔ Weekly blood pressure monitoring")
-
-        if "COPD" in conditions:
-            plan.append("✔ Pulmonary rehabilitation")
-
-        if "Sepsis" in conditions:
-            plan.append("✔ Infection monitoring")
-
-        if len(plan) == 0:
-            plan.append("✔ Routine outpatient follow-up")
-
-        for item in plan:
-
-            st.write(item)
-# ==========================================================
-# SAVE RESULTS FOR REPORT PAGE
-# ==========================================================
-
-        st.session_state["conditions"] = conditions
-
-        st.session_state["risk_factors"] = risk
-
-        st.session_state["recommendations"] = recommendations
-
-        st.session_state["clinical_summary"] = summary
-
-        st.session_state["risk_level"] = risk_level
-
-
-# ==========================================================
-# SCORE CARDS
-# ==========================================================
-
-        st.markdown("---")
-
-        c1, c2, c3 = st.columns(3)
-
-        c1.metric(
-            "Detected Diseases",
-            len(conditions)
-        )
-
-        c2.metric(
-            "Risk Factors",
-            len(risk)
-        )
-
-        c3.metric(
-            "Overall Risk",
-            risk_level
-        )
- # ==========================================================
-# NLP ENTITY VISUALIZATION
-# ==========================================================
-
-st.markdown("---")
-
-st.subheader("🔬 Medical Entity Analysis")
-
-doc = nlp(notes)
-
-entities_found = []
-
-for ent in doc.ents:
-    entities_found.append((ent.text, ent.label_))
-
-if len(entities_found) == 0:
-
-    st.info("No named entities detected by spaCy.")
-
-else:
-
-    entity_df = []
-
-    for entity, label in entities_found:
-
-        entity_df.append({
-
-            "Entity": entity,
-
-            "Type": label
-
-        })
-
-    st.dataframe(
-        entity_df,
-        use_container_width=True
-    )
-# ==========================================================
-# NLP DOCUMENT STATISTICS
-# ==========================================================
-
-st.markdown("---")
-
-st.subheader("📊 NLP Statistics")
-
-doc = nlp(notes)
-
-num_tokens = len(doc)
-
-num_sentences = len(list(doc.sents))
-
-num_words = len([t for t in doc if t.is_alpha])
-
-num_numbers = len([t for t in doc if t.like_num])
-
-c1,c2,c3,c4 = st.columns(4)
-
-c1.metric("Tokens", num_tokens)
-
-c2.metric("Words", num_words)
-
-c3.metric("Sentences", num_sentences)
-
-c4.metric("Numbers", num_numbers)
-
-# ==========================================================
-# AI CONFIDENCE SCORE
-# ==========================================================
-
-st.markdown("---")
-
-st.subheader("🎯 AI Confidence")
-
-confidence = 70
-
-confidence += len(conditions) * 4
-
-confidence += len(risk) * 2
-
-confidence = min(confidence,99)
-
-st.progress(confidence/100)
-
-st.metric(
-    "Confidence Score",
-    f"{confidence}%"
-)
-
-# ==========================================================
-# EXPORT SUMMARY
-# ==========================================================
-
-st.markdown("---")
-
-st.subheader("📋 Copy Summary")
-
-report = f"""
-
-CAREWATCH-AI Clinical Analysis
-
-Detected Conditions:
-{', '.join(conditions)}
-
-Risk Factors:
-{', '.join(risk)}
-
-Clinical Summary:
-
-{summary}
-
-Recommendations:
-
-"""
-
-for rec in recommendations:
-
-    report += f"\n• {rec}"
-
-st.text_area(
-
-    "Clinical Summary",
-
-    report,
-
-    height=250
-
-)
