@@ -1,0 +1,4 @@
+patient_id,risk_level,risk_probability,clinical_summary,age,gender,state,admission_type,ward_type,discharge_type,primary_diagnosis,primary_category,charlson_index,comorbidity_count,previous_admissions
+P001,Low,0.002368085533347,The AI model indicates a lower risk of 30-day hospital readmission.,50.0,M,Andhra Pradesh,Elective,General,Expired,Acute myocardial infarction,Cardiovascular,1.0,2.0,1.0
+0002f994-f6c6-42d6-bd4c-d417ef482fe7,Low,0.0019536220964367,The AI model indicates a lower risk of 30-day hospital readmission.,13.0,M,Kerala,Elective,General,Expired,Acute myocardial infarction,Cardiovascular,0.0,0.0,0.0
+7df7236c-d33b-4d0d-8e97-6fdd71fc3d05,Low,0.002115261348410168,The AI model indicates a lower risk of 30-day hospital readmission.,39.0,F,Uttar Pradesh,Elective,General,Expired,Acute myocardial infarction,Cardiovascular,0.0,0.0,0.0

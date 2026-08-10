@@ -5,6 +5,10 @@ import joblib
 import shap
 import matplotlib.pyplot as plt
 
+from auth import require_role
+
+require_role(["Doctor"])
+
 from translator import translate_text
 
 # Get selected language

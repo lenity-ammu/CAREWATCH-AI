@@ -3,6 +3,10 @@ from fpdf import FPDF
 from datetime import datetime
 import os
 
+from auth import require_role
+
+require_role(["Doctor"])
+
 st.set_page_config(
     page_title="AI Report Generation",
     page_icon="📄",
@@ -203,6 +207,66 @@ if st.button("📥 Download Complete AI Report", use_container_width=True):
     pdf.set_font("Arial","B",12)
 
     pdf.cell(190,8,f"Generated : {datetime.now().strftime('%d-%m-%Y %H:%M')}",ln=True)
+    
+    # ============================================================
+    # SAVE REPORT DATA FOR THE PATIENT
+    # ============================================================
+
+    patient_id = st.session_state.get("patient_id", None)
+
+    if patient_id:
+
+        report_data = {
+            "patient_id": patient_id,
+            "patient": patient,
+            "prediction": int(prediction),
+            "probability": float(probability),
+            "risk_level": risk_level,
+            "conditions": conditions,
+            "risk_factors": risk,
+            "recommendations": recommendations,
+            "clinical_summary": summary,
+            "generated_at": datetime.now().strftime(
+                "%d-%m-%Y %H:%M"
+            )
+        }
+
+        st.session_state["patient_report"] = report_data
+        
+        # ============================================================
+        # SAVE REPORT PERSISTENTLY
+        # ============================================================
+
+        import json
+
+        report_file = "patient_reports.json"
+
+        # Load existing reports
+        if os.path.exists(report_file):
+
+            try:
+                with open(report_file, "r", encoding="utf-8") as f:
+                    all_reports = json.load(f)
+
+            except (json.JSONDecodeError, FileNotFoundError):
+
+                all_reports = {}
+
+        else:
+
+            all_reports = {}
+
+        # Save report using patient ID
+        all_reports[str(patient_id)] = report_data
+
+        with open(report_file, "w", encoding="utf-8") as f:
+
+            json.dump(
+                all_reports,
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
 
     filename="CareWatch_AI_Report.pdf"
 

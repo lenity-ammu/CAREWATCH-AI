@@ -1,5 +1,9 @@
 import streamlit as st
 
+from auth import require_role
+
+require_role(["Admin"])
+
 from translator import translate_text
 
 # Get selected language

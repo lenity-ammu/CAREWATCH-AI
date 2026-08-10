@@ -3,6 +3,10 @@ import pandas as pd
 import plotly.express as px
 import numpy as np
 
+from auth import require_role
+
+require_role(["Doctor", "Admin"])
+
 from translator import translate_text
 
 # Get selected language

@@ -1,18 +1,26 @@
 import streamlit as st
 import spacy
 import re
+import os
+import pandas as pd
 
+from auth import require_role
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="AI Clinical Assistant",
+    page_title="CareWatch-AI | AI Clinical Assistant",
     page_icon="🧠",
     layout="wide"
 )
 
+# ============================================================
+# ACCESS CONTROL
+# ============================================================
+
+require_role(["Doctor"])
 
 # ============================================================
 # NLP MODEL
@@ -31,18 +39,6 @@ def load_nlp_model():
 
 nlp = load_nlp_model()
 
-
-# ============================================================
-# DEFAULT VALUES
-# ============================================================
-
-conditions = []
-risk = []
-recommendations = []
-risk_level = "Low"
-summary = ""
-
-
 # ============================================================
 # PAGE TITLE
 # ============================================================
@@ -50,20 +46,250 @@ summary = ""
 st.title("🧠 AI Clinical Assistant")
 
 st.write(
-    "Analyze doctor's discharge summaries and clinical notes "
-    "to identify medical conditions, risk factors and "
-    "generate follow-up recommendations."
+    "Analyze clinical notes to identify documented medical "
+    "conditions, readmission risk factors and generate "
+    "follow-up recommendations."
 )
 
+st.info(
+    "⚠️ This assistant provides rule-based clinical "
+    "decision-support information only. It does not replace "
+    "professional medical judgment."
+)
+
+st.divider()
+
+# ============================================================
+# LOAD PATIENT DATA
+# ============================================================
+
+result_file = "prediction_results.csv"
+
+if not os.path.exists(result_file):
+
+    st.warning(
+        "No patient prediction data is available yet."
+    )
+
+    st.info(
+        "Please generate a patient prediction first."
+    )
+
+    st.stop()
+
+# ============================================================
+# READ CSV
+# ============================================================
+
+try:
+
+    results = pd.read_csv(result_file)
+
+except Exception as e:
+
+    st.error(
+        f"Unable to read patient data: {e}"
+    )
+
+    st.stop()
+
+# ============================================================
+# CHECK PATIENT ID
+# ============================================================
+
+if "patient_id" not in results.columns:
+
+    st.error(
+        "patient_id column is missing from "
+        "prediction_results.csv"
+    )
+
+    st.stop()
+
+# Clean patient IDs
+
+results["patient_id"] = (
+    results["patient_id"]
+    .astype(str)
+    .str.strip()
+)
+
+# ============================================================
+# PATIENT SELECTION
+# ============================================================
+
+st.header("👤 Patient Selection")
+
+patient_ids = sorted(
+    results["patient_id"]
+    .unique()
+    .tolist()
+)
+
+if not patient_ids:
+
+    st.info(
+        "No patients are available."
+    )
+
+    st.stop()
+
+selected_patient = st.selectbox(
+    "Select Patient",
+    patient_ids
+)
+
+# ============================================================
+# GET SELECTED PATIENT
+# ============================================================
+
+patient_rows = results[
+    results["patient_id"] == selected_patient
+]
+
+if patient_rows.empty:
+
+    st.warning(
+        "No data found for the selected patient."
+    )
+
+    st.stop()
+
+# Latest prediction
+
+patient = patient_rows.iloc[-1]
+
+st.divider()
+
+# ============================================================
+# PATIENT INFORMATION
+# ============================================================
+
+st.header("👤 Selected Patient")
+
+c1, c2, c3, c4 = st.columns(4)
+
+with c1:
+
+    st.metric(
+        "Patient ID",
+        selected_patient
+    )
+
+with c2:
+
+    st.metric(
+        "Age",
+        str(patient.get("age", "N/A"))
+    )
+
+with c3:
+
+    st.metric(
+        "Gender",
+        str(patient.get("gender", "N/A"))
+    )
+
+with c4:
+
+    st.metric(
+        "Risk Level",
+        str(patient.get("risk_level", "N/A"))
+    )
+
+# ============================================================
+# BASIC CLINICAL INFORMATION
+# ============================================================
+
+c1, c2, c3 = st.columns(3)
+
+with c1:
+
+    st.info(
+        f"**Primary Diagnosis:** "
+        f"{patient.get('primary_diagnosis', 'N/A')}"
+    )
+
+with c2:
+
+    st.info(
+        f"**Disease Category:** "
+        f"{patient.get('primary_category', 'N/A')}"
+    )
+
+with c3:
+
+    st.info(
+        f"**Previous Admissions:** "
+        f"{patient.get('previous_admissions', 'N/A')}"
+    )
+
+st.divider()
+
+# ============================================================
+# DEFAULT CLINICAL NOTES
+# ============================================================
+
+diagnosis = str(
+    patient.get(
+        "primary_diagnosis",
+        ""
+    )
+)
+
+category = str(
+    patient.get(
+        "primary_category",
+        ""
+    )
+)
+
+comorbidity = str(
+    patient.get(
+        "comorbidity_count",
+        ""
+    )
+)
+
+previous_admissions = str(
+    patient.get(
+        "previous_admissions",
+        ""
+    )
+)
+
+existing_summary = str(
+    patient.get(
+        "clinical_summary",
+        ""
+    )
+)
+
+default_notes = f"""
+Primary diagnosis: {diagnosis}.
+Disease category: {category}.
+Comorbidity count: {comorbidity}.
+Previous admissions: {previous_admissions}.
+Previous AI clinical summary: {existing_summary}
+"""
 
 # ============================================================
 # CLINICAL NOTES
 # ============================================================
 
+st.header("📝 Clinical Notes")
+
+st.write(
+    "Review or edit the clinical notes before analysis."
+)
+
 notes = st.text_area(
-    "📝 Enter Clinical Notes",
+    "Enter Clinical Notes",
+    value=default_notes.strip(),
     height=250,
     placeholder="""
+Example:
+
 Patient has uncontrolled diabetes.
 
 Known CKD stage III.
@@ -78,26 +304,27 @@ Complains of shortness of breath.
 """
 )
 
-
 analyze = st.button(
     "🔍 Analyze Clinical Notes",
-    width="stretch"
+    use_container_width=True
 )
 
-
 # ============================================================
-# MEDICAL DATABASE
+# MEDICAL KNOWLEDGE DATABASE
 # ============================================================
 
 MEDICAL_DB = {
 
     "Diabetes": {
+
         "keywords": [
             "diabetes",
+            "diabetic",
             "glucose",
             "hba1c",
             "hyperglycemia"
         ],
+
         "recommendations": [
             "Monitor HbA1c and blood glucose regularly.",
             "Review diabetes medication adherence.",
@@ -106,12 +333,16 @@ MEDICAL_DB = {
     },
 
     "Chronic Kidney Disease": {
+
         "keywords": [
             "ckd",
+            "chronic kidney disease",
             "kidney disease",
+            "renal disease",
             "renal",
             "creatinine"
         ],
+
         "recommendations": [
             "Monitor renal function and serum creatinine.",
             "Consider nephrology follow-up.",
@@ -120,10 +351,13 @@ MEDICAL_DB = {
     },
 
     "Heart Failure": {
+
         "keywords": [
             "heart failure",
-            "cardiac failure"
+            "cardiac failure",
+            "congestive heart failure"
         ],
+
         "recommendations": [
             "Schedule cardiology follow-up.",
             "Monitor weight and fluid status.",
@@ -132,11 +366,13 @@ MEDICAL_DB = {
     },
 
     "Hypertension": {
+
         "keywords": [
             "hypertension",
             "high blood pressure",
             "blood pressure"
         ],
+
         "recommendations": [
             "Monitor blood pressure regularly.",
             "Review antihypertensive medication adherence."
@@ -144,10 +380,13 @@ MEDICAL_DB = {
     },
 
     "COPD": {
+
         "keywords": [
             "copd",
+            "chronic obstructive pulmonary disease",
             "chronic obstructive"
         ],
+
         "recommendations": [
             "Monitor oxygen saturation.",
             "Review inhaler compliance.",
@@ -156,10 +395,12 @@ MEDICAL_DB = {
     },
 
     "Pneumonia": {
+
         "keywords": [
             "pneumonia",
             "lung infection"
         ],
+
         "recommendations": [
             "Review treatment response.",
             "Monitor respiratory status."
@@ -167,16 +408,18 @@ MEDICAL_DB = {
     },
 
     "Sepsis": {
+
         "keywords": [
-            "sepsis"
+            "sepsis",
+            "septic"
         ],
+
         "recommendations": [
             "Monitor vital signs and infection markers.",
             "Review response to antimicrobial treatment."
         ]
     }
 }
-
 
 # ============================================================
 # CONDITION DETECTION
@@ -192,7 +435,8 @@ def detect_conditions(text):
     doc = nlp(text)
 
     clean_text = " ".join(
-        token.text for token in doc
+        token.text
+        for token in doc
     )
 
     for disease, info in MEDICAL_DB.items():
@@ -201,11 +445,13 @@ def detect_conditions(text):
 
             if keyword in clean_text:
 
-                detected.append(disease)
+                if disease not in detected:
 
-                recommendations.extend(
-                    info["recommendations"]
-                )
+                    detected.append(disease)
+
+                    recommendations.extend(
+                        info["recommendations"]
+                    )
 
                 break
 
@@ -222,34 +468,89 @@ def detect_risk(text):
 
     risk_factors = []
 
-    if "previous admission" in text:
+    # Previous admission
+
+    if (
+        "previous admission" in text
+        or "previous admissions" in text
+        or "previously admitted" in text
+        or "past admission" in text
+    ):
+
         risk_factors.append(
             "Previous Hospital Admission"
         )
 
-    if "poor medication adherence" in text:
+    # Medication adherence
+
+    if (
+        "poor medication adherence" in text
+        or "non adherence" in text
+        or "non-adherence" in text
+        or "medication noncompliance" in text
+        or "poor compliance" in text
+    ):
+
         risk_factors.append(
             "Poor Medication Adherence"
         )
 
-    if "hba1c" in text:
+    # Diabetes / HbA1c
+
+    if (
+        "hba1c" in text
+        or "uncontrolled diabetes" in text
+        or "poorly controlled diabetes" in text
+    ):
+
         risk_factors.append(
-            "High HbA1c"
+            "Diabetes / Elevated HbA1c"
         )
 
-    if "ckd" in text:
+    # CKD
+
+    if (
+        "ckd" in text
+        or "chronic kidney disease" in text
+        or "renal disease" in text
+    ):
+
         risk_factors.append(
             "Chronic Kidney Disease"
         )
 
-    if "heart failure" in text:
+    # Heart failure
+
+    if (
+        "heart failure" in text
+        or "cardiac failure" in text
+    ):
+
         risk_factors.append(
             "Heart Failure"
         )
 
-    if "sepsis" in text:
+    # Sepsis
+
+    if (
+        "sepsis" in text
+        or "septic" in text
+    ):
+
         risk_factors.append(
             "Sepsis"
+        )
+
+    # Shortness of breath
+
+    if (
+        "shortness of breath" in text
+        or "breathlessness" in text
+        or "dyspnea" in text
+    ):
+
+        risk_factors.append(
+            "Respiratory Symptoms"
         )
 
     return risk_factors
@@ -269,26 +570,32 @@ if analyze:
 
     else:
 
-        conditions, recommendations = detect_conditions(notes)
+        # ====================================================
+        # RUN ANALYSIS
+        # ====================================================
+
+        conditions, recommendations = (
+            detect_conditions(notes)
+        )
 
         risk = detect_risk(notes)
 
-        # ----------------------------------------------------
+        # ====================================================
         # TEXT STATISTICS
-        # ----------------------------------------------------
+        # ====================================================
 
         doc = nlp(notes)
 
         num_tokens = len(doc)
 
-        # Do NOT depend on doc.sents
         num_sentences = len(
             [
-                s for s in re.split(
+                sentence
+                for sentence in re.split(
                     r"[.!?]+",
                     notes
                 )
-                if s.strip()
+                if sentence.strip()
             ]
         )
 
@@ -300,11 +607,18 @@ if analyze:
             ]
         )
 
-        # ----------------------------------------------------
+        # ====================================================
         # RISK SCORE
-        # ----------------------------------------------------
+        # ====================================================
 
-        risk_score = len(conditions) + len(risk)
+        risk_score = (
+            len(conditions)
+            + len(risk)
+        )
+
+        # ====================================================
+        # RISK LEVEL
+        # ====================================================
 
         if risk_score >= 6:
 
@@ -318,11 +632,17 @@ if analyze:
 
             risk_level = "Low"
 
-        # ----------------------------------------------------
-        # RESULTS
-        # ----------------------------------------------------
+        # ====================================================
+        # RESULTS HEADER
+        # ====================================================
 
         st.markdown("---")
+
+        st.header("📊 Clinical Analysis Results")
+
+        # ====================================================
+        # TEXT STATISTICS
+        # ====================================================
 
         st.subheader(
             "📊 Clinical Note Statistics"
@@ -330,28 +650,38 @@ if analyze:
 
         c1, c2, c3 = st.columns(3)
 
-        c1.metric(
-            "Words",
-            num_words
-        )
+        with c1:
 
-        c2.metric(
-            "Sentences",
-            num_sentences
-        )
+            st.metric(
+                "Words",
+                num_words
+            )
 
-        c3.metric(
-            "Tokens",
-            num_tokens
-        )
+        with c2:
 
-        # ----------------------------------------------------
-        # CONDITIONS + RISK
-        # ----------------------------------------------------
+            st.metric(
+                "Sentences",
+                num_sentences
+            )
+
+        with c3:
+
+            st.metric(
+                "Tokens",
+                num_tokens
+            )
+
+        # ====================================================
+        # CONDITIONS + RISK FACTORS
+        # ====================================================
 
         st.markdown("---")
 
         col1, col2 = st.columns(2)
+
+        # ----------------------------------------------------
+        # CONDITIONS
+        # ----------------------------------------------------
 
         with col1:
 
@@ -362,13 +692,20 @@ if analyze:
             if conditions:
 
                 for condition in conditions:
-                    st.success(condition)
+
+                    st.success(
+                        f"✅ {condition}"
+                    )
 
             else:
 
                 st.info(
                     "No medical conditions detected."
                 )
+
+        # ----------------------------------------------------
+        # RISK FACTORS
+        # ----------------------------------------------------
 
         with col2:
 
@@ -379,7 +716,10 @@ if analyze:
             if risk:
 
                 for factor in risk:
-                    st.error(factor)
+
+                    st.error(
+                        f"⚠️ {factor}"
+                    )
 
             else:
 
@@ -387,9 +727,9 @@ if analyze:
                     "No major risk factors detected."
                 )
 
-        # ----------------------------------------------------
+        # ====================================================
         # RECOMMENDATIONS
-        # ----------------------------------------------------
+        # ====================================================
 
         st.markdown("---")
 
@@ -415,9 +755,9 @@ if analyze:
                 "No specific recommendations generated."
             )
 
-        # ----------------------------------------------------
+        # ====================================================
         # RISK ASSESSMENT
-        # ----------------------------------------------------
+        # ====================================================
 
         st.markdown("---")
 
@@ -427,23 +767,41 @@ if analyze:
 
         if risk_level == "High":
 
-            st.error("🔴 HIGH RISK")
+            st.error(
+                "🔴 HIGH RISK"
+            )
 
         elif risk_level == "Moderate":
 
-            st.warning("🟡 MODERATE RISK")
+            st.warning(
+                "🟡 MODERATE RISK"
+            )
 
         else:
 
-            st.success("🟢 LOW RISK")
+            st.success(
+                "🟢 LOW RISK"
+            )
 
-        st.progress(
-            min(risk_score / 8, 1.0)
+        # Risk score progress
+
+        risk_progress = min(
+            risk_score / 8,
+            1.0
         )
 
-        # ----------------------------------------------------
-        # SUMMARY
-        # ----------------------------------------------------
+        st.progress(
+            risk_progress
+        )
+
+        st.caption(
+            f"Risk factor score: "
+            f"{risk_score}"
+        )
+
+        # ====================================================
+        # AI CLINICAL SUMMARY
+        # ====================================================
 
         st.markdown("---")
 
@@ -454,30 +812,103 @@ if analyze:
         if conditions:
 
             summary = (
-                f"The clinical notes indicate "
+                "The clinical notes indicate "
                 f"{', '.join(conditions)}. "
             )
 
             if risk:
 
                 summary += (
-                    f"Important readmission risk factors "
-                    f"include {', '.join(risk)}. "
+                    "Important documented readmission "
+                    "risk factors include "
+                    f"{', '.join(risk)}. "
                 )
 
             summary += (
-                f"The rule-based clinical assessment "
+                "The rule-based clinical assessment "
                 f"classifies the documented risk as "
                 f"{risk_level.lower()}. "
-                f"Clinical findings should be reviewed "
-                f"by the treating healthcare professional."
+            )
+
+            summary += (
+                "Clinical findings should be reviewed "
+                "by the treating healthcare professional."
             )
 
         else:
 
             summary = (
                 "No major conditions were identified "
-                "from the supplied clinical notes."
+                "from the supplied clinical notes. "
+                "The findings should still be reviewed "
+                "by the treating healthcare professional."
             )
 
-        st.success(summary)
+        st.success(
+            summary
+        )
+
+        # ====================================================
+        # PATIENT'S EXISTING MODEL RESULT
+        # ====================================================
+
+        st.markdown("---")
+
+        st.subheader(
+            "📈 Existing Readmission Prediction"
+        )
+
+        existing_risk = str(
+            patient.get(
+                "risk_level",
+                "N/A"
+            )
+        )
+
+        try:
+
+            existing_probability = float(
+                patient.get(
+                    "risk_probability",
+                    0
+                )
+            )
+
+        except Exception:
+
+            existing_probability = 0.0
+
+        c1, c2 = st.columns(2)
+
+        with c1:
+
+            st.metric(
+                "Model Risk Level",
+                existing_risk
+            )
+
+        with c2:
+
+            st.metric(
+                "Model Readmission Probability",
+                f"{existing_probability * 100:.2f}%"
+            )
+
+        st.caption(
+            "The readmission prediction above comes from "
+            "the existing prediction model. The clinical "
+            "assistant analysis is a separate rule-based "
+            "assessment of the supplied clinical notes."
+        )
+
+# ============================================================
+# DOCTOR NOTICE
+# ============================================================
+
+st.divider()
+
+st.warning(
+    "⚠️ AI-generated clinical decision-support information "
+    "must be reviewed by a qualified healthcare professional "
+    "before any clinical decision is made."
+)

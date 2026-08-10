@@ -1,0 +1,26 @@
+{
+    "P001": {
+        "patient_id": "P001",
+        "generated_at": "2026-08-10 21:26:16",
+        "risk_level": "Low",
+        "probability": 0.0089014763946928,
+        "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
+        "recommendations": [
+            "Continue following the healthcare plan.",
+            "Attend scheduled follow-up appointments.",
+            "Maintain regular health monitoring."
+        ]
+    },
+    "7df7236c-d33b-4d0d-8e97-6fdd71fc3d05": {
+        "patient_id": "7df7236c-d33b-4d0d-8e97-6fdd71fc3d05",
+        "generated_at": "2026-08-10 23:44:02",
+        "risk_level": "Low",
+        "probability": 0.0021152613484101,
+        "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
+        "recommendations": [
+            "Continue following the healthcare plan.",
+            "Attend scheduled follow-up appointments.",
+            "Maintain regular health monitoring."
+        ]
+    }
+}
