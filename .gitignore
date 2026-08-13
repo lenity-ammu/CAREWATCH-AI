@@ -1,8 +1,35 @@
+# Python
 __pycache__/
-.ipynb_checkpoints/
 *.pyc
-.env
+*.pyo
+*.pyd
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
 venv/
 .venv/
-.idea/
-.vscode/
+env/
+
+# Local backups
+backup_v1/
+CAREWATCH-AI.zip
+
+# Local/system files
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+*.env
+
+# Generated reports
+reports/
+
+# Local blockchain/runtime data
+blockchain.json
+
+# Generated prediction/runtime data
+prediction_results.csv
+patient_reports.json

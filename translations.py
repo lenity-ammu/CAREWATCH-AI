@@ -2,29 +2,139 @@ TRANSLATIONS = {
 
     "English": {
 
-        "dashboard": "Patient Dashboard",
-        "welcome": "Welcome",
-        "profile": "My Profile",
-        "health_risk": "My Health Risk",
-        "reports": "My Reports",
-        "recommendations": "My Recommendations",
-        "language": "Language",
-        "logout": "Logout",
-        "patient_information": "Patient Information",
-        "risk_assessment": "Risk Assessment",
-        "risk_level": "Risk Level",
-        "risk_probability": "Risk Probability",
-        "no_result": "No risk assessment is currently available.",
-        "consult_doctor": "Please consult your healthcare professional for clinical decisions.",
-        "healthcare_information": "Your healthcare information is protected and shown only for your account.",
-        "view_profile": "View your registered healthcare information.",
-        "view_risk": "View your latest available risk assessment.",
-        "view_reports": "View reports generated for your healthcare record.",
-        "view_recommendations": "View patient-friendly recommendations associated with your assessment.",
-        "patient_portal": "Patient Healthcare Portal"
+        "welcome_patient": "Welcome, Patient!",
+        "personal_portal": "Your Personal Health Portal",
 
+        "my_profile": "My Profile",
+        "registered_information": "View your registered health information.",
+
+        "name": "Name",
+        "age": "Age",
+        "gender": "Gender",
+        "state": "State",
+        "hospital": "Hospital",
+        "doctor": "Doctor",
+
+        "my_health_risk": "My Health Risk",
+        "latest_risk": "View your latest health risk assessment.",
+
+        "current_risk": "Current Risk Level",
+        "readmission_probability":
+            "Probability of hospital readmission within 30 days",
+
+        "low": "Low",
+        "moderate": "Moderate",
+        "high": "High",
+
+        "medical_summary": "Medical Summary",
+        "recommendations": "My Recommendations",
+        "reports": "My Reports",
+
+        "prepared": "Prepared",
+        "risk_level": "Risk Level",
+        "readmission_probability_short":
+            "Readmission Probability",
+
+        "security_notice":
+            "Your health information is securely displayed only within your account.",
+
+        "medical_notice":
+            "Please consult your healthcare professional for medical decisions.",
+
+        "clinical_summary_low":
+            "The AI model indicates a lower risk of 30-day hospital readmission.",
+
+        "clinical_summary_moderate":
+            "The AI model indicates a moderate risk of 30-day hospital readmission. Please discuss the assessment with your healthcare professional.",
+
+        "clinical_summary_high":
+            "The AI model indicates a higher risk of 30-day hospital readmission. Please discuss the assessment with your healthcare professional.",
+
+        "recommendation_plan":
+            "Continue following your healthcare plan.",
+
+        "recommendation_followup":
+            "Attend scheduled follow-up appointments.",
+
+        "recommendation_monitoring":
+            "Maintain regular health monitoring.",
+
+        "recommendation_doctor":
+            "Discuss the assessment with your doctor.",
+
+        "report": "Report",
     },
 
+
+    "Tamil": {
+
+        "welcome_patient": "வரவேற்கிறோம், நோயாளியே!",
+        "personal_portal": "உங்கள் தனிப்பட்ட சுகாதார போர்டல்",
+
+        "my_profile": "எனது சுயவிவரம்",
+        "registered_information":
+            "உங்கள் பதிவு செய்யப்பட்ட சுகாதார தகவல்களைப் பார்க்கவும்.",
+
+        "name": "பெயர்",
+        "age": "வயது",
+        "gender": "பாலினம்",
+        "state": "மாநிலம்",
+        "hospital": "மருத்துவமனை",
+        "doctor": "மருத்துவர்",
+
+        "my_health_risk": "எனது சுகாதார ஆபத்து",
+        "latest_risk":
+            "உங்கள் சமீபத்திய சுகாதார ஆபத்து மதிப்பீட்டைப் பார்க்கவும்.",
+
+        "current_risk": "தற்போதைய ஆபத்து நிலை",
+
+        "readmission_probability":
+            "30 நாட்களுக்குள் மருத்துவமனையில் மீண்டும் அனுமதிக்கப்படும் வாய்ப்பு",
+
+        "low": "குறைவு",
+        "moderate": "மிதமான",
+        "high": "அதிகம்",
+
+        "medical_summary": "மருத்துவ சுருக்கம்",
+        "recommendations": "எனது பரிந்துரைகள்",
+        "reports": "எனது அறிக்கைகள்",
+
+        "prepared": "தயாரிக்கப்பட்டது",
+        "risk_level": "அபாய நிலை",
+
+        "readmission_probability_short":
+            "மீண்டும் அனுமதிக்கப்படும் வாய்ப்பு",
+
+        "security_notice":
+            "உங்கள் சுகாதார தகவல்கள் உங்கள் கணக்கில் மட்டுமே பாதுகாப்பாகக் காட்டப்படுகின்றன.",
+
+        "medical_notice":
+            "மருத்துவ முடிவுகளுக்கு உங்கள் சுகாதார நிபுணரை அணுகவும்.",
+
+        "clinical_summary_low":
+            "AI மாதிரி 30 நாட்களுக்குள் மருத்துவமனையில் மீண்டும் அனுமதிக்கப்படும் அபாயம் குறைவாக இருப்பதாகக் குறிப்பிடுகிறது.",
+
+        "clinical_summary_moderate":
+            "AI மாதிரி 30 நாட்களுக்குள் மருத்துவமனையில் மீண்டும் அனுமதிக்கப்படும் அபாயம் மிதமாக இருப்பதாகக் குறிப்பிடுகிறது. இந்த மதிப்பீட்டை உங்கள் சுகாதார நிபுணருடன் கலந்துரையாடவும்.",
+
+        "clinical_summary_high":
+            "AI மாதிரி 30 நாட்களுக்குள் மருத்துவமனையில் மீண்டும் அனுமதிக்கப்படும் அபாயம் அதிகமாக இருப்பதாகக் குறிப்பிடுகிறது. இந்த மதிப்பீட்டை உங்கள் சுகாதார நிபுணருடன் கலந்துரையாடவும்.",
+
+        "recommendation_plan":
+            "உங்கள் சுகாதாரத் திட்டத்தை தொடர்ந்து பின்பற்றவும்.",
+
+        "recommendation_followup":
+            "திட்டமிடப்பட்ட பின்தொடர் மருத்துவ சந்திப்புகளில் கலந்து கொள்ளவும்.",
+
+        "recommendation_monitoring":
+            "உங்கள் சுகாதார நிலையை தொடர்ந்து கண்காணிக்கவும்.",
+
+        "recommendation_doctor":
+            "இந்த மதிப்பீட்டை உங்கள் மருத்துவருடன் கலந்துரையாடவும்.",
+
+        "report": "அறிக்கை",
+    }
+}
     "Kannada": {
 
         "dashboard": "ರೋಗಿಯ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್",
@@ -75,30 +185,6 @@ TRANSLATIONS = {
 
     },
 
-    "Tamil": {
-
-        "dashboard": "நோயாளர் டாஷ்போர்டு",
-        "welcome": "வரவேற்கிறோம்",
-        "profile": "எனது சுயவிவரம்",
-        "health_risk": "எனது சுகாதார ஆபத்து",
-        "reports": "எனது அறிக்கைகள்",
-        "recommendations": "எனது பரிந்துரைகள்",
-        "language": "மொழி",
-        "logout": "வெளியேறு",
-        "patient_information": "நோயாளர் தகவல்",
-        "risk_assessment": "ஆபத்து மதிப்பீடு",
-        "risk_level": "ஆபத்து நிலை",
-        "risk_probability": "ஆபத்து நிகழ்தகவு",
-        "no_result": "தற்போது எந்த ஆபத்து மதிப்பீடும் கிடைக்கவில்லை.",
-        "consult_doctor": "மருத்துவ முடிவுகளுக்கு உங்கள் சுகாதார நிபுணரை அணுகவும்.",
-        "healthcare_information": "உங்கள் சுகாதார தகவல் பாதுகாப்பாக வைக்கப்பட்டு உங்கள் கணக்கில் மட்டுமே காட்டப்படும்.",
-        "view_profile": "உங்கள் பதிவு செய்யப்பட்ட சுகாதார தகவலைப் பார்க்கவும்.",
-        "view_risk": "உங்கள் சமீபத்திய ஆபத்து மதிப்பீட்டைப் பார்க்கவும்.",
-        "view_reports": "உங்கள் சுகாதார பதிவுக்காக உருவாக்கப்பட்ட அறிக்கைகளைப் பார்க்கவும்.",
-        "view_recommendations": "உங்கள் மதிப்பீட்டுடன் தொடர்புடைய நோயாளர் நட்பு பரிந்துரைகளைப் பார்க்கவும்.",
-        "patient_portal": "நோயாளர் சுகாதார போர்டல்"
-
-    },
 
     "Telugu": {
 
