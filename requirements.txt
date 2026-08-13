@@ -11,3 +11,4 @@ spacy
 deep-translator
 fpdf2
 Pillow
+reportlab
