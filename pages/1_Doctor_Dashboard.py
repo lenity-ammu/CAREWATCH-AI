@@ -139,34 +139,13 @@ admission_count = (
 )
 
 
-high_count = 0
-moderate_count = 0
-low_count = 0
+high_count=moderate_count=low_count=0
 
-
-if (
-    not predictions.empty
-    and "risk_level" in predictions.columns
-):
-
-    risk = (
-        predictions["risk_level"]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-    )
-
-    high_count = int(
-        (risk == "high").sum()
-    )
-
-    moderate_count = int(
-        (risk == "moderate").sum()
-    )
-
-    low_count = int(
-        (risk == "low").sum()
-    )
+if not predictions.empty and "risk_level" in predictions.columns:
+    risk=predictions["risk_level"].astype(str).str.strip().str.lower()
+    high_count=int(risk.str.contains("high",na=False).sum())
+    moderate_count=int(risk.str.contains("moderate",na=False).sum())
+    low_count=int(risk.str.contains("low",na=False).sum())
 
 
 c1, c2, c3, c4, c5 = st.columns(5)
