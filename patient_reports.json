@@ -1,26 +1,74 @@
-{
-    "P001": {
-        "patient_id": "P001",
-        "generated_at": "2026-08-10 21:26:16",
+[
+    {
+        "patient_id": "ab3bda6c-05df-4f4f-a6b2-c98e7dfcf336",
+        "generated_at": "2026-08-12T12:29:30",
+        "risk_level": "Moderate",
+        "risk_probability": 0.444907977478949,
+        "clinical_summary": "The AI model indicates a moderate risk of 30-day hospital readmission. Additional clinical monitoring may be appropriate.",
+        "recommendations": [
+            "Discuss the assessment with your doctor.",
+            "Attend scheduled follow-up appointments.",
+            "Continue regular health monitoring."
+        ]
+    },
+    {
+        "patient_id": "cabcba57-999c-4197-816d-3856a9dfde4b",
+        "generated_at": "2026-08-12T12:40:40",
+        "risk_level": "Moderate",
+        "risk_probability": 0.40439078125302963,
+        "clinical_summary": "The AI model indicates a moderate risk of 30-day hospital readmission. Additional clinical monitoring may be appropriate.",
+        "recommendations": [
+            "Discuss the assessment with your doctor.",
+            "Attend scheduled follow-up appointments.",
+            "Continue regular health monitoring."
+        ]
+    },
+    {
+        "patient_id": "2b179f89-9af7-45cf-86b4-3e01a47a3b7b",
+        "generated_at": "2026-08-12T12:44:28",
         "risk_level": "Low",
-        "probability": 0.0089014763946928,
+        "risk_probability": 0.0012185758687580995,
         "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
         "recommendations": [
-            "Continue following the healthcare plan.",
+            "Continue following your healthcare plan.",
             "Attend scheduled follow-up appointments.",
             "Maintain regular health monitoring."
         ]
     },
-    "7df7236c-d33b-4d0d-8e97-6fdd71fc3d05": {
-        "patient_id": "7df7236c-d33b-4d0d-8e97-6fdd71fc3d05",
-        "generated_at": "2026-08-10 23:44:02",
+    {
+        "patient_id": "139d020f-582c-4d94-9fbd-f262410d16f0",
+        "generated_at": "2026-08-12T21:03:01",
         "risk_level": "Low",
-        "probability": 0.0021152613484101,
+        "risk_probability": 0.022261754998087024,
         "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
         "recommendations": [
-            "Continue following the healthcare plan.",
+            "Continue following your healthcare plan.",
+            "Attend scheduled follow-up appointments.",
+            "Maintain regular health monitoring."
+        ]
+    },
+    {
+        "patient_id": "2b179f89-9af7-45cf-86b4-3e01a47a3b7b",
+        "generated_at": "2026-08-12T21:03:54",
+        "risk_level": "Low",
+        "risk_probability": 0.0012185758687580995,
+        "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
+        "recommendations": [
+            "Continue following your healthcare plan.",
+            "Attend scheduled follow-up appointments.",
+            "Maintain regular health monitoring."
+        ]
+    },
+    {
+        "patient_id": "139d020f-582c-4d94-9fbd-f262410d16f0",
+        "generated_at": "2026-08-12T21:10:42",
+        "risk_level": "Low",
+        "risk_probability": 0.013888952415163995,
+        "clinical_summary": "The AI model indicates a lower risk of 30-day hospital readmission.",
+        "recommendations": [
+            "Continue following your healthcare plan.",
             "Attend scheduled follow-up appointments.",
             "Maintain regular health monitoring."
         ]
     }
-}
+]

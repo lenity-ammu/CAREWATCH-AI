@@ -1,13 +1,11 @@
 import os
-import json
-import hashlib
 from datetime import datetime
 
 import joblib
 import pandas as pd
 import streamlit as st
 
-from auth import require_login, require_role
+from auth import require_role
 from blockchain import create_block, verify_blockchain
 
 
@@ -21,11 +19,11 @@ st.set_page_config(
     layout="wide"
 )
 
+
 # ============================================================
 # AUTHENTICATION
 # ============================================================
 
-require_login()
 require_role("Doctor")
 
 
@@ -33,12 +31,25 @@ require_role("Doctor")
 # PATHS
 # ============================================================
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(BASE_DIR, "model")
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
+
+MODEL_DIR = os.path.join(
+    BASE_DIR,
+    "model"
+)
+
+PREDICTION_FILE = os.path.join(
+    BASE_DIR,
+    "prediction_results.csv"
+)
 
 
 # ============================================================
-# LOAD MODEL FILES
+# LOAD FINAL MODEL FILES
 # ============================================================
 
 @st.cache_resource
@@ -65,10 +76,10 @@ def load_model_files():
         )
     )
 
-    scaler = joblib.load(
+    threshold = joblib.load(
         os.path.join(
             MODEL_DIR,
-            "scaler.pkl"
+            "readmission_threshold.pkl"
         )
     )
 
@@ -76,78 +87,257 @@ def load_model_files():
         model,
         feature_columns,
         label_encoders,
-        scaler
+        float(threshold)
     )
 
 
 try:
 
-    model, FEATURE_COLUMNS, LABEL_ENCODERS, SCALER = (
-        load_model_files()
+    (
+        model,
+        FEATURE_COLUMNS,
+        LABEL_ENCODERS,
+        FINAL_THRESHOLD
+    ) = load_model_files()
+
+except Exception as error:
+
+    st.error(
+        "Unable to load the CareWatch-AI prediction model."
     )
 
-except Exception as e:
+    st.exception(error)
 
-    st.error("Unable to load the CareWatch-AI prediction model.")
-    st.exception(e)
     st.stop()
 
 
 # ============================================================
-# LOAD DATA
+# VALIDATE FINAL MODEL CONFIGURATION
+# ============================================================
+
+if len(FEATURE_COLUMNS) != 27:
+
+    st.error(
+        f"Model configuration error: "
+        f"expected 27 features but found "
+        f"{len(FEATURE_COLUMNS)}."
+    )
+
+    st.stop()
+
+
+# ============================================================
+# LOAD DATASETS
 # ============================================================
 
 @st.cache_data
 def load_csv(filename):
 
-    path = os.path.join(BASE_DIR, filename)
+    path = os.path.join(
+        BASE_DIR,
+        filename
+    )
 
     if not os.path.exists(path):
+
         return pd.DataFrame()
 
     try:
+
         return pd.read_csv(path)
+
     except Exception:
+
         return pd.DataFrame()
 
 
-patients = load_csv("patients.csv")
-admissions = load_csv("admissions.csv")
-diagnoses = load_csv("diagnoses.csv")
-billing = load_csv("billing.csv")
-hospitals = load_csv("hospitals.csv")
+patients = load_csv(
+    "patients.csv"
+)
+
+admissions = load_csv(
+    "admissions.csv"
+)
+
+diagnoses = load_csv(
+    "diagnoses.csv"
+)
+
+billing = load_csv(
+    "billing.csv"
+)
+
+hospitals = load_csv(
+    "hospitals.csv"
+)
 
 
 # ============================================================
-# NORMALIZE IDs
+# NORMALIZE IDENTIFIERS
 # ============================================================
 
-for df, column in [
-    (patients, "patient_id"),
-    (admissions, "patient_id"),
-    (admissions, "admission_id"),
-    (diagnoses, "admission_id"),
-    (billing, "admission_id"),
-    (hospitals, "hospital_id")
+for dataframe, column in [
+
+    (
+        patients,
+        "patient_id"
+    ),
+
+    (
+        admissions,
+        "patient_id"
+    ),
+
+    (
+        admissions,
+        "admission_id"
+    ),
+
+    (
+        diagnoses,
+        "admission_id"
+    ),
+
+    (
+        billing,
+        "admission_id"
+    ),
+
+    (
+        hospitals,
+        "hospital_id"
+    )
+
 ]:
 
-    if column in df.columns:
+    if (
+        not dataframe.empty
+        and
+        column in dataframe.columns
+    ):
 
-        df[column] = (
-            df[column]
+        dataframe[column] = (
+            dataframe[column]
             .astype(str)
             .str.strip()
         )
 
 
 # ============================================================
+# SAFE VALUE FUNCTIONS
+# ============================================================
+
+def safe_float(
+    value,
+    default=0.0
+):
+
+    try:
+
+        number = float(value)
+
+        if pd.isna(number):
+
+            return float(default)
+
+        return number
+
+    except Exception:
+
+        return float(default)
+
+
+def safe_int(
+    value,
+    default=0
+):
+
+    try:
+
+        number = int(
+            float(value)
+        )
+
+        return number
+
+    except Exception:
+
+        return int(default)
+
+
+def safe_bool(value):
+
+    if isinstance(
+        value,
+        bool
+    ):
+
+        return value
+
+    return (
+        str(value)
+        .strip()
+        .lower()
+        in [
+            "true",
+            "1",
+            "yes",
+            "y",
+            "t"
+        ]
+    )
+
+
+def safe_text(
+    value,
+    default="Unknown"
+):
+
+    if value is None:
+
+        return default
+
+    try:
+
+        if pd.isna(value):
+
+            return default
+
+    except Exception:
+
+        pass
+
+    text = str(
+        value
+    ).strip()
+
+    if (
+        not text
+        or
+        text.lower()
+        in [
+            "nan",
+            "none",
+            "null"
+        ]
+    ):
+
+        return default
+
+    return text
+
+
+# ============================================================
 # HEADER
 # ============================================================
 
-st.title("🧠 Patient Readmission Prediction")
+st.title(
+    "🧠 Patient Readmission Prediction"
+)
 
 st.caption(
-    "AI-Based Hospital Readmission Prediction and Clinical Decision Support"
+    "AI-Based Hospital Readmission Prediction "
+    "and Clinical Decision Support"
 )
 
 st.markdown("---")
@@ -159,36 +349,53 @@ st.markdown("---")
 
 if patients.empty:
 
-    st.error("patients.csv could not be loaded.")
+    st.error(
+        "patients.csv could not be loaded."
+    )
+
     st.stop()
+
 
 if admissions.empty:
 
-    st.warning(
-        "Admissions data is unavailable. "
-        "Prediction may be limited to patient-level information."
+    st.error(
+        "admissions.csv could not be loaded. "
+        "Admission-level information is required "
+        "for the final 27-feature model."
     )
+
+    st.stop()
 
 
 # ============================================================
 # PATIENT SELECTION
 # ============================================================
 
-st.header("👤 Patient Selection")
+st.header(
+    "👤 Patient Selection"
+)
 
 patient_ids = (
-    patients["patient_id"]
+    patients[
+        "patient_id"
+    ]
     .dropna()
     .astype(str)
+    .str.strip()
     .unique()
     .tolist()
 )
 
-patient_ids = sorted(patient_ids)
+patient_ids = sorted(
+    patient_ids
+)
 
 if not patient_ids:
 
-    st.error("No patients are available.")
+    st.error(
+        "No patients are available."
+    )
+
     st.stop()
 
 
@@ -197,21 +404,30 @@ selected_patient_id = st.selectbox(
     patient_ids
 )
 
-patient_id = str(selected_patient_id).strip()
+patient_id = str(
+    selected_patient_id
+).strip()
 
 
 # ============================================================
-# GET PATIENT
+# PATIENT RECORD
 # ============================================================
 
 patient_rows = patients[
-    patients["patient_id"] == patient_id
+    patients[
+        "patient_id"
+    ] == patient_id
 ]
+
 
 if patient_rows.empty:
 
-    st.error("Selected patient was not found.")
+    st.error(
+        "Selected patient was not found."
+    )
+
     st.stop()
+
 
 patient = patient_rows.iloc[0]
 
@@ -220,261 +436,345 @@ patient = patient_rows.iloc[0]
 # PATIENT ADMISSIONS
 # ============================================================
 
-if not admissions.empty:
+patient_admissions = admissions[
+    admissions[
+        "patient_id"
+    ] == patient_id
+].copy()
 
-    patient_admissions = admissions[
-        admissions["patient_id"] == patient_id
-    ].copy()
 
-else:
+if patient_admissions.empty:
 
-    patient_admissions = pd.DataFrame()
+    st.error(
+        "No admission record was found for this patient. "
+        "The final model requires admission-level features."
+    )
+
+    st.stop()
 
 
 # ============================================================
-# SORT ADMISSIONS
+# SORT ADMISSIONS AND SELECT LATEST ADMISSION
 # ============================================================
 
-if not patient_admissions.empty:
+if (
+    "admit_date"
+    in patient_admissions.columns
+):
 
-    if "admit_date" in patient_admissions.columns:
+    patient_admissions[
+        "_parsed_admit_date"
+    ] = pd.to_datetime(
+        patient_admissions[
+            "admit_date"
+        ],
+        errors="coerce"
+    )
 
-        patient_admissions["admit_date"] = pd.to_datetime(
-            patient_admissions["admit_date"],
-            errors="coerce"
-        )
-
-        patient_admissions = patient_admissions.sort_values(
-            "admit_date",
+    patient_admissions = (
+        patient_admissions
+        .sort_values(
+            "_parsed_admit_date",
             ascending=False
         )
+    )
+
+
+latest_admission = (
+    patient_admissions
+    .iloc[0]
+)
+
+latest_admission_id = safe_text(
+    latest_admission.get(
+        "admission_id"
+    ),
+    ""
+)
+
+
+if not latest_admission_id:
+
+    st.error(
+        "Latest admission ID is unavailable."
+    )
+
+    st.stop()
 
 
 # ============================================================
-# LATEST ADMISSION
-# ============================================================
-
-if not patient_admissions.empty:
-
-    latest_admission = patient_admissions.iloc[0]
-
-else:
-
-    latest_admission = pd.Series(dtype=object)
-
-
-# ============================================================
-# PATIENT INFORMATION
+# EHR DISPLAY
 # ============================================================
 
 st.markdown("---")
 
-st.header("🏥 Electronic Health Record")
+st.header(
+    "🏥 Electronic Health Record"
+)
 
 st.caption(
     "Patient information is automatically retrieved "
     "from the CareWatch-AI EHR datasets."
 )
 
-st.subheader("👤 Patient Information")
 
-c1, c2, c3, c4, c5 = st.columns(5)
+# ============================================================
+# PATIENT INFORMATION
+# ============================================================
+
+st.subheader(
+    "👤 Patient Information"
+)
+
+c1, c2, c3, c4, c5 = st.columns(
+    5
+)
 
 with c1:
+
     st.metric(
         "Patient ID",
         patient_id
     )
 
 with c2:
+
     st.metric(
         "Age",
-        patient.get("age", "N/A")
+        safe_text(
+            patient.get(
+                "age"
+            )
+        )
     )
 
 with c3:
+
     st.metric(
         "Gender",
-        patient.get("gender", "N/A")
+        safe_text(
+            patient.get(
+                "gender"
+            )
+        )
     )
 
 with c4:
+
     st.metric(
         "State",
-        patient.get("state", "N/A")
+        safe_text(
+            patient.get(
+                "state"
+            )
+        )
     )
 
 with c5:
+
     st.metric(
         "Comorbidities",
-        patient.get("comorbidity_count", "N/A")
+        safe_text(
+            patient.get(
+                "comorbidity_count"
+            )
+        )
     )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
+
     st.info(
-        f"**BPL Card:** {patient.get('bpl_card', 'N/A')}"
+        f"**BPL Card:** "
+        f"{safe_text(patient.get('bpl_card'))}"
     )
 
 with c2:
+
     st.info(
-        f"**Insurance:** {patient.get('insurance_type', 'N/A')}"
+        f"**Insurance:** "
+        f"{safe_text(patient.get('insurance_type'))}"
     )
 
 with c3:
+
     st.info(
         f"**Previous Admissions:** "
-        f"{patient.get('prev_admissions', 'N/A')}"
+        f"{safe_text(patient.get('prev_admissions'))}"
     )
 
 
 # ============================================================
-# ADMISSION INFORMATION
+# LATEST ADMISSION INFORMATION
 # ============================================================
 
-if patient_admissions.empty:
+st.subheader(
+    "🏥 Latest Admission"
+)
 
-    st.info(
-        "No admission history was found for this patient. "
-        "Prediction can still be performed using available patient information."
+st.write(
+    f"**Admission ID:** "
+    f"{latest_admission_id}"
+)
+
+c1, c2, c3, c4 = st.columns(
+    4
+)
+
+with c1:
+
+    st.metric(
+        "Admission Type",
+        safe_text(
+            latest_admission.get(
+                "admit_type"
+            )
+        )
     )
 
-else:
+with c2:
 
-    st.subheader("🏥 Latest Admission")
-
-    admission_id = latest_admission.get(
-        "admission_id",
-        "N/A"
+    st.metric(
+        "Ward Type",
+        safe_text(
+            latest_admission.get(
+                "ward_type"
+            )
+        )
     )
 
-    st.write(
-        f"**Admission ID:** {admission_id}"
+with c3:
+
+    st.metric(
+        "Discharge Type",
+        safe_text(
+            latest_admission.get(
+                "discharge_type"
+            )
+        )
     )
 
-    c1, c2, c3, c4 = st.columns(4)
+with c4:
 
-    with c1:
-
-        st.metric(
-            "Admission Type",
+    st.metric(
+        "Length of Stay",
+        safe_text(
             latest_admission.get(
-                "admit_type",
-                "N/A"
+                "los_days"
             )
         )
-
-    with c2:
-
-        st.metric(
-            "Ward Type",
-            latest_admission.get(
-                "ward_type",
-                "N/A"
-            )
-        )
-
-    with c3:
-
-        st.metric(
-            "Discharge Type",
-            latest_admission.get(
-                "discharge_type",
-                "N/A"
-            )
-        )
-
-    with c4:
-
-        st.metric(
-            "Length of Stay",
-            latest_admission.get(
-                "los_days",
-                "N/A"
-            )
-        )
+    )
 
 
 # ============================================================
 # DIAGNOSIS INFORMATION
 # ============================================================
+# IMPORTANT:
+# Training aggregated diagnosis information per admission.
+# Therefore prediction must use diagnosis information from
+# the selected latest admission only.
+# ============================================================
 
-patient_diagnoses = pd.DataFrame()
+latest_diagnoses = pd.DataFrame()
 
 if (
-    not patient_admissions.empty
-    and not diagnoses.empty
-    and "admission_id" in diagnoses.columns
+    not diagnoses.empty
+    and
+    "admission_id"
+    in diagnoses.columns
 ):
 
-    admission_ids = (
-        patient_admissions["admission_id"]
-        .astype(str)
-        .tolist()
-    )
-
-    patient_diagnoses = diagnoses[
-        diagnoses["admission_id"].astype(str).isin(
-            admission_ids
-        )
+    latest_diagnoses = diagnoses[
+        diagnoses[
+            "admission_id"
+        ].astype(str)
+        ==
+        latest_admission_id
     ].copy()
 
 
-# ============================================================
-# PRIMARY DIAGNOSIS
-# ============================================================
-
-primary_diagnosis = "Unknown"
-primary_category = "Unknown"
 diagnosis_count = 0
 
-if not patient_diagnoses.empty:
+primary_diagnosis = "Unknown"
 
-    diagnosis_count = len(patient_diagnoses)
+primary_category = "Unknown"
 
-    if "diag_rank" in patient_diagnoses.columns:
 
-        ranked = patient_diagnoses.copy()
+if not latest_diagnoses.empty:
 
-        ranked["_rank"] = pd.to_numeric(
-            ranked["diag_rank"],
+    diagnosis_count = len(
+        latest_diagnoses
+    )
+
+    if (
+        "diag_rank"
+        in latest_diagnoses.columns
+    ):
+
+        ranked = (
+            latest_diagnoses
+            .copy()
+        )
+
+        ranked[
+            "_rank"
+        ] = pd.to_numeric(
+            ranked[
+                "diag_rank"
+            ],
             errors="coerce"
         )
 
-        ranked = ranked.sort_values(
-            "_rank",
-            ascending=True
+        ranked = (
+            ranked
+            .sort_values(
+                "_rank",
+                ascending=True
+            )
         )
 
-        primary_row = ranked.iloc[0]
+        primary_row = (
+            ranked.iloc[0]
+        )
 
     else:
 
-        primary_row = patient_diagnoses.iloc[0]
-
-    primary_diagnosis = str(
-        primary_row.get(
-            "icd10_code",
-            "Unknown"
+        primary_row = (
+            latest_diagnoses
+            .iloc[0]
         )
+
+
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Notebook training used diag_desc as primary_diagnosis,
+    # NOT icd10_code.
+    # --------------------------------------------------------
+
+    primary_diagnosis = safe_text(
+        primary_row.get(
+            "diag_desc"
+        ),
+        "Unknown"
     )
 
-    primary_category = str(
+    primary_category = safe_text(
         primary_row.get(
-            "diag_category",
-            "Unknown"
-        )
+            "diag_category"
+        ),
+        "Unknown"
     )
 
 else:
 
-    if not patient_admissions.empty:
-
-        st.info(
-            "No diagnosis records were found for the latest admission."
-        )
+    st.info(
+        "No diagnosis records were found "
+        "for the latest admission."
+    )
 
 
 # ============================================================
@@ -482,108 +782,264 @@ else:
 # ============================================================
 
 hospital_tier = "Unknown"
+
 hospital_beds = 0
+
 hospital_teaching = False
 
-hospital_id = None
 
-if not patient_admissions.empty:
-
-    hospital_id = latest_admission.get(
+hospital_id = safe_text(
+    latest_admission.get(
         "hospital_id"
-    )
+    ),
+    ""
+)
+
 
 if (
-    hospital_id is not None
-    and not hospitals.empty
-    and "hospital_id" in hospitals.columns
+    hospital_id
+    and
+    not hospitals.empty
+    and
+    "hospital_id"
+    in hospitals.columns
 ):
 
     hospital_rows = hospitals[
-        hospitals["hospital_id"].astype(str)
-        == str(hospital_id)
+        hospitals[
+            "hospital_id"
+        ].astype(str)
+        ==
+        hospital_id
     ]
+
 
     if not hospital_rows.empty:
 
-        hospital = hospital_rows.iloc[0]
+        hospital = (
+            hospital_rows
+            .iloc[0]
+        )
 
-        hospital_tier = hospital.get(
-            "tier",
+        hospital_tier = safe_text(
+            hospital.get(
+                "tier"
+            ),
             "Unknown"
         )
 
-        hospital_beds = hospital.get(
-            "beds",
+        hospital_beds = safe_int(
+            hospital.get(
+                "beds"
+            ),
             0
         )
 
-        hospital_teaching = hospital.get(
-            "teaching",
-            False
+        hospital_teaching = safe_bool(
+            hospital.get(
+                "teaching"
+            )
         )
 
 
 # ============================================================
 # BILLING INFORMATION
 # ============================================================
+# IMPORTANT:
+# Billing is also admission-level in the training dataset.
+# Use the latest admission only.
+# ============================================================
 
 total_cost = 0.0
+
 govt_subsidy = 0.0
+
 out_of_pocket = 0.0
+
 cost_category = "Unknown"
 
-patient_billing = pd.DataFrame()
+
+latest_billing = pd.DataFrame()
+
 
 if (
-    not patient_admissions.empty
-    and not billing.empty
-    and "admission_id" in billing.columns
+    not billing.empty
+    and
+    "admission_id"
+    in billing.columns
 ):
 
-    admission_ids = (
-        patient_admissions["admission_id"]
-        .astype(str)
-        .tolist()
-    )
-
-    patient_billing = billing[
-        billing["admission_id"].astype(str).isin(
-            admission_ids
-        )
+    latest_billing = billing[
+        billing[
+            "admission_id"
+        ].astype(str)
+        ==
+        latest_admission_id
     ].copy()
 
-if not patient_billing.empty:
 
-    if "total_cost_inr" in patient_billing.columns:
+if not latest_billing.empty:
 
-        total_cost = pd.to_numeric(
-            patient_billing["total_cost_inr"],
-            errors="coerce"
-        ).fillna(0).sum()
+    billing_row = (
+        latest_billing
+        .iloc[0]
+    )
 
-    if "govt_subsidy_inr" in patient_billing.columns:
+    total_cost = safe_float(
+        billing_row.get(
+            "total_cost_inr"
+        ),
+        0
+    )
 
-        govt_subsidy = pd.to_numeric(
-            patient_billing["govt_subsidy_inr"],
-            errors="coerce"
-        ).fillna(0).sum()
+    govt_subsidy = safe_float(
+        billing_row.get(
+            "govt_subsidy_inr"
+        ),
+        0
+    )
 
-    if "out_of_pocket_inr" in patient_billing.columns:
+    out_of_pocket = safe_float(
+        billing_row.get(
+            "out_of_pocket_inr"
+        ),
+        0
+    )
 
-        out_of_pocket = pd.to_numeric(
-            patient_billing["out_of_pocket_inr"],
-            errors="coerce"
-        ).fillna(0).sum()
+    cost_category = safe_text(
+        billing_row.get(
+            "cost_category"
+        ),
+        "Unknown"
+    )
 
-    if "cost_category" in patient_billing.columns:
 
-        cost_category = str(
-            patient_billing.iloc[0].get(
-                "cost_category",
-                "Unknown"
-            )
-        )
+# ============================================================
+# DEFAULT PATIENT VALUES
+# ============================================================
+
+default_age = safe_int(
+    patient.get(
+        "age"
+    ),
+    50
+)
+
+default_gender = safe_text(
+    patient.get(
+        "gender"
+    ),
+    "Unknown"
+)
+
+default_state = safe_text(
+    patient.get(
+        "state"
+    ),
+    "Unknown"
+)
+
+default_bpl = safe_bool(
+    patient.get(
+        "bpl_card"
+    )
+)
+
+default_insurance = safe_text(
+    patient.get(
+        "insurance_type"
+    ),
+    "Unknown"
+)
+
+default_comorbidity = safe_int(
+    patient.get(
+        "comorbidity_count"
+    ),
+    0
+)
+
+default_previous = safe_int(
+    patient.get(
+        "prev_admissions"
+    ),
+    0
+)
+
+
+# ============================================================
+# DEFAULT ADMISSION VALUES
+# ============================================================
+
+default_los = safe_int(
+    latest_admission.get(
+        "los_days"
+    ),
+    1
+)
+
+default_admit_type = safe_text(
+    latest_admission.get(
+        "admit_type"
+    ),
+    "Unknown"
+)
+
+default_ward_type = safe_text(
+    latest_admission.get(
+        "ward_type"
+    ),
+    "Unknown"
+)
+
+default_discharge_type = safe_text(
+    latest_admission.get(
+        "discharge_type"
+    ),
+    "Unknown"
+)
+
+default_procedures = safe_int(
+    latest_admission.get(
+        "num_procedures"
+    ),
+    0
+)
+
+default_charlson = safe_float(
+    latest_admission.get(
+        "charlson_index"
+    ),
+    0
+)
+
+default_hba1c = safe_float(
+    latest_admission.get(
+        "hba1c"
+    ),
+    0
+)
+
+default_creatinine = safe_float(
+    latest_admission.get(
+        "creatinine"
+    ),
+    0
+)
+
+default_haemoglobin = safe_float(
+    latest_admission.get(
+        "haemoglobin"
+    ),
+    0
+)
+
+default_sbp = safe_float(
+    latest_admission.get(
+        "systolic_bp"
+    ),
+    120
+)
 
 
 # ============================================================
@@ -592,199 +1048,24 @@ if not patient_billing.empty:
 
 st.markdown("---")
 
-st.header("🤖 AI Readmission Risk Prediction")
+st.header(
+    "🤖 AI Readmission Risk Prediction"
+)
 
 st.caption(
     "Values are pre-filled from the patient's EHR. "
-    "The doctor may review them before running the prediction."
+    "The doctor may review them before running "
+    "the prediction."
 )
 
 
 # ============================================================
-# SAFE VALUE FUNCTIONS
+# DEMOGRAPHIC AND ADMISSION INPUTS
 # ============================================================
 
-def safe_float(value, default=0.0):
-
-    try:
-
-        number = float(value)
-
-        if pd.isna(number):
-            return float(default)
-
-        return number
-
-    except Exception:
-
-        return float(default)
-
-
-def safe_int(value, default=0):
-
-    try:
-
-        number = int(float(value))
-
-        return number
-
-    except Exception:
-
-        return int(default)
-
-
-def safe_bool(value):
-
-    if isinstance(value, bool):
-        return value
-
-    return str(value).strip().lower() in [
-        "true",
-        "1",
-        "yes",
-        "y",
-        "t"
-    ]
-
-
-# ============================================================
-# DEFAULT VALUES
-# ============================================================
-
-default_age = safe_int(
-    patient.get("age", 50),
-    50
+c1, c2, c3 = st.columns(
+    3
 )
-
-default_gender = str(
-    patient.get("gender", "M")
-)
-
-default_state = str(
-    patient.get("state", "Unknown")
-)
-
-default_bpl = safe_bool(
-    patient.get("bpl_card", False)
-)
-
-default_insurance = str(
-    patient.get(
-        "insurance_type",
-        "Unknown"
-    )
-)
-
-default_comorbidity = safe_int(
-    patient.get(
-        "comorbidity_count",
-        0
-    )
-)
-
-default_previous = safe_int(
-    patient.get(
-        "prev_admissions",
-        0
-    )
-)
-
-
-# ============================================================
-# ADMISSION DEFAULTS
-# ============================================================
-
-default_los = 1
-default_admit_type = "Unknown"
-default_ward_type = "Unknown"
-default_discharge_type = "Unknown"
-default_procedures = 0
-default_charlson = 0.0
-default_hba1c = 0.0
-default_creatinine = 0.0
-default_haemoglobin = 0.0
-default_sbp = 120.0
-
-if not patient_admissions.empty:
-
-    default_los = safe_int(
-        latest_admission.get(
-            "los_days",
-            1
-        ),
-        1
-    )
-
-    default_admit_type = str(
-        latest_admission.get(
-            "admit_type",
-            "Unknown"
-        )
-    )
-
-    default_ward_type = str(
-        latest_admission.get(
-            "ward_type",
-            "Unknown"
-        )
-    )
-
-    default_discharge_type = str(
-        latest_admission.get(
-            "discharge_type",
-            "Unknown"
-        )
-    )
-
-    default_procedures = safe_int(
-        latest_admission.get(
-            "num_procedures",
-            0
-        )
-    )
-
-    default_charlson = safe_float(
-        latest_admission.get(
-            "charlson_index",
-            0
-        )
-    )
-
-    default_hba1c = safe_float(
-        latest_admission.get(
-            "hba1c",
-            0
-        )
-    )
-
-    default_creatinine = safe_float(
-        latest_admission.get(
-            "creatinine",
-            0
-        )
-    )
-
-    default_haemoglobin = safe_float(
-        latest_admission.get(
-            "haemoglobin",
-            0
-        )
-    )
-
-    default_sbp = safe_float(
-        latest_admission.get(
-            "systolic_bp",
-            120
-        ),
-        120
-    )
-
-
-# ============================================================
-# CLINICAL INPUTS
-# ============================================================
-
-c1, c2, c3 = st.columns(3)
 
 with c1:
 
@@ -792,7 +1073,9 @@ with c1:
         "Age",
         min_value=0,
         max_value=120,
-        value=int(default_age),
+        value=int(
+            default_age
+        ),
         step=1
     )
 
@@ -811,7 +1094,9 @@ with c3:
     )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
@@ -819,7 +1104,9 @@ with c1:
         "Length of Stay",
         min_value=0,
         max_value=365,
-        value=int(default_los),
+        value=int(
+            default_los
+        ),
         step=1
     )
 
@@ -838,7 +1125,9 @@ with c3:
     )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
@@ -853,7 +1142,9 @@ with c2:
         "Number of Procedures",
         min_value=0,
         max_value=100,
-        value=int(default_procedures),
+        value=int(
+            default_procedures
+        ),
         step=1
     )
 
@@ -863,12 +1154,16 @@ with c3:
         "Charlson Index",
         min_value=0.0,
         max_value=50.0,
-        value=float(default_charlson),
+        value=float(
+            default_charlson
+        ),
         step=0.1
     )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
@@ -876,7 +1171,9 @@ with c1:
         "Previous Admissions",
         min_value=0,
         max_value=100,
-        value=int(default_previous),
+        value=int(
+            default_previous
+        ),
         step=1
     )
 
@@ -886,7 +1183,9 @@ with c2:
         "Comorbidity Count",
         min_value=0,
         max_value=50,
-        value=int(default_comorbidity),
+        value=int(
+            default_comorbidity
+        ),
         step=1
     )
 
@@ -896,18 +1195,24 @@ with c3:
         "Diagnosis Count",
         min_value=0,
         max_value=100,
-        value=int(diagnosis_count),
+        value=int(
+            diagnosis_count
+        ),
         step=1
     )
 
 
 # ============================================================
-# CLINICAL LABS
+# CLINICAL INFORMATION
 # ============================================================
 
-st.subheader("🩸 Clinical Information")
+st.subheader(
+    "🩸 Clinical Information"
+)
 
-c1, c2, c3, c4 = st.columns(4)
+c1, c2, c3, c4 = st.columns(
+    4
+)
 
 with c1:
 
@@ -915,7 +1220,9 @@ with c1:
         "HbA1c",
         min_value=0.0,
         max_value=30.0,
-        value=float(default_hba1c),
+        value=float(
+            default_hba1c
+        ),
         step=0.1
     )
 
@@ -925,7 +1232,9 @@ with c2:
         "Creatinine",
         min_value=0.0,
         max_value=30.0,
-        value=float(default_creatinine),
+        value=float(
+            default_creatinine
+        ),
         step=0.1
     )
 
@@ -935,7 +1244,9 @@ with c3:
         "Haemoglobin",
         min_value=0.0,
         max_value=30.0,
-        value=float(default_haemoglobin),
+        value=float(
+            default_haemoglobin
+        ),
         step=0.1
     )
 
@@ -945,12 +1256,16 @@ with c4:
         "Systolic BP",
         min_value=0.0,
         max_value=300.0,
-        value=float(default_sbp),
+        value=float(
+            default_sbp
+        ),
         step=1.0
     )
 
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
@@ -970,7 +1285,9 @@ with c3:
 
     st.metric(
         "Diagnosis Count",
-        int(diagnosis_count_input)
+        int(
+            diagnosis_count_input
+        )
     )
 
 
@@ -978,15 +1295,21 @@ with c3:
 # HOSPITAL INFORMATION
 # ============================================================
 
-st.subheader("🏥 Hospital Information")
+st.subheader(
+    "🏥 Hospital Information"
+)
 
-c1, c2, c3 = st.columns(3)
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
     hospital_tier_input = st.text_input(
         "Hospital Tier",
-        value=str(hospital_tier)
+        value=str(
+            hospital_tier
+        )
     )
 
 with c2:
@@ -995,7 +1318,9 @@ with c2:
         "Number of Beds",
         min_value=0,
         max_value=10000,
-        value=int(safe_int(hospital_beds)),
+        value=int(
+            hospital_beds
+        ),
         step=1
     )
 
@@ -1003,7 +1328,9 @@ with c3:
 
     teaching_input = st.checkbox(
         "Teaching Hospital",
-        value=safe_bool(hospital_teaching)
+        value=bool(
+            hospital_teaching
+        )
     )
 
 
@@ -1011,14 +1338,19 @@ with c3:
 # FINANCIAL INFORMATION
 # ============================================================
 
-st.subheader("💰 Financial Information")
+st.subheader(
+    "💰 Financial Information"
+)
 
 insurance_type = st.text_input(
     "Insurance Type",
     value=default_insurance
 )
 
-c1, c2, c3 = st.columns(3)
+
+c1, c2, c3 = st.columns(
+    3
+)
 
 with c1:
 
@@ -1026,7 +1358,9 @@ with c1:
         "Total Cost (INR)",
         min_value=0.0,
         max_value=100000000.0,
-        value=float(total_cost),
+        value=float(
+            total_cost
+        ),
         step=100.0
     )
 
@@ -1036,7 +1370,9 @@ with c2:
         "Government Subsidy (INR)",
         min_value=0.0,
         max_value=100000000.0,
-        value=float(govt_subsidy),
+        value=float(
+            govt_subsidy
+        ),
         step=100.0
     )
 
@@ -1046,179 +1382,403 @@ with c3:
         "Out-of-Pocket Cost (INR)",
         min_value=0.0,
         max_value=100000000.0,
-        value=float(out_of_pocket),
+        value=float(
+            out_of_pocket
+        ),
         step=100.0
     )
 
 
 cost_category_input = st.text_input(
     "Cost Category",
-    value=str(cost_category)
+    value=str(
+        cost_category
+    )
 )
 
 bpl_card_input = st.checkbox(
     "BPL Card Holder",
-    value=default_bpl
+    value=bool(
+        default_bpl
+    )
 )
 
 
 # ============================================================
-# BUILD RAW FEATURE DATAFRAME
+# RAW 27-FEATURE INPUT
 # ============================================================
 
 raw_features = {
 
-    "los_days": float(los_days),
+    "los_days":
+        float(
+            los_days
+        ),
 
-    "admit_type": str(admit_type),
+    "admit_type":
+        safe_text(
+            admit_type
+        ),
 
-    "ward_type": str(ward_type),
+    "ward_type":
+        safe_text(
+            ward_type
+        ),
 
-    "discharge_type": str(discharge_type),
+    "discharge_type":
+        safe_text(
+            discharge_type
+        ),
 
-    "num_procedures": float(num_procedures),
+    "num_procedures":
+        float(
+            num_procedures
+        ),
 
-    "charlson_index": float(charlson_index),
+    "charlson_index":
+        float(
+            charlson_index
+        ),
 
-    "hba1c": float(hba1c),
+    "hba1c":
+        float(
+            hba1c
+        ),
 
-    "creatinine": float(creatinine),
+    "creatinine":
+        float(
+            creatinine
+        ),
 
-    "haemoglobin": float(haemoglobin),
+    "haemoglobin":
+        float(
+            haemoglobin
+        ),
 
-    "systolic_bp": float(systolic_bp),
+    "systolic_bp":
+        float(
+            systolic_bp
+        ),
 
-    "age": float(age),
+    "age":
+        float(
+            age
+        ),
 
-    "gender": str(gender),
+    "gender":
+        safe_text(
+            gender
+        ),
 
-    "state": str(state),
+    "state":
+        safe_text(
+            state
+        ),
 
-    "bpl_card": bool(bpl_card_input),
+    "bpl_card":
+        bool(
+            bpl_card_input
+        ),
 
-    "insurance_type": str(insurance_type),
+    "insurance_type":
+        safe_text(
+            insurance_type
+        ),
 
-    "comorbidity_count": float(comorbidity_count),
+    "comorbidity_count":
+        float(
+            comorbidity_count
+        ),
 
-    "prev_admissions": float(prev_admissions),
+    "prev_admissions":
+        float(
+            prev_admissions
+        ),
 
-    "total_cost_inr": float(total_cost_inr),
+    "total_cost_inr":
+        float(
+            total_cost_inr
+        ),
 
-    "govt_subsidy_inr": float(govt_subsidy_inr),
+    "govt_subsidy_inr":
+        float(
+            govt_subsidy_inr
+        ),
 
-    "out_of_pocket_inr": float(out_of_pocket_inr),
+    "out_of_pocket_inr":
+        float(
+            out_of_pocket_inr
+        ),
 
-    "cost_category": str(cost_category_input),
+    "cost_category":
+        safe_text(
+            cost_category_input
+        ),
 
-    "tier": str(hospital_tier_input),
+    "tier":
+        safe_text(
+            hospital_tier_input
+        ),
 
-    "beds": float(hospital_beds_input),
+    "beds":
+        float(
+            hospital_beds_input
+        ),
 
-    "teaching": bool(teaching_input),
+    "teaching":
+        bool(
+            teaching_input
+        ),
 
-    "diagnosis_count": float(diagnosis_count_input),
+    "diagnosis_count":
+        float(
+            diagnosis_count_input
+        ),
 
-    "primary_diagnosis": str(primary_diagnosis_input),
+    "primary_diagnosis":
+        safe_text(
+            primary_diagnosis_input
+        ),
 
-    "primary_category": str(primary_category_input)
+    "primary_category":
+        safe_text(
+            primary_category_input
+        )
 }
 
 
 # ============================================================
-# ENCODING
+# CATEGORICAL ENCODING
 # ============================================================
 
-def encode_value(column, value):
+def encode_value(
+    column,
+    value
+):
 
-    if column not in LABEL_ENCODERS:
+    if (
+        column
+        not in LABEL_ENCODERS
+    ):
 
         return value
 
-    encoder = LABEL_ENCODERS[column]
 
-    value_string = str(value)
+    encoder = (
+        LABEL_ENCODERS[
+            column
+        ]
+    )
 
-    classes = list(
-        getattr(
+
+    value_string = safe_text(
+        value
+    )
+
+
+    classes = [
+        str(item)
+        for item
+        in getattr(
             encoder,
             "classes_",
             []
         )
-    )
+    ]
 
-    if value_string in classes:
 
-        return int(
-            encoder.transform(
-                [value_string]
-            )[0]
-        )
-
-    # Unknown categorical value:
-    # use first known class instead of crashing
-
-    if len(classes) > 0:
-
-        fallback = classes[0]
+    if (
+        value_string
+        in classes
+    ):
 
         return int(
             encoder.transform(
-                [fallback]
+                [
+                    value_string
+                ]
             )[0]
         )
+
+
+    # --------------------------------------------------------
+    # Prefer explicit Unknown category when available.
+    # --------------------------------------------------------
+
+    if (
+        "Unknown"
+        in classes
+    ):
+
+        return int(
+            encoder.transform(
+                [
+                    "Unknown"
+                ]
+            )[0]
+        )
+
+
+    # --------------------------------------------------------
+    # Otherwise use first known training category.
+    # --------------------------------------------------------
+
+    if classes:
+
+        fallback = (
+            classes[0]
+        )
+
+        return int(
+            encoder.transform(
+                [
+                    fallback
+                ]
+            )[0]
+        )
+
 
     return 0
 
 
 # ============================================================
-# PREPARE MODEL INPUT
+# PREPARE FINAL MODEL INPUT
 # ============================================================
 
 def prepare_model_input():
 
-    df = pd.DataFrame(
-        [raw_features]
+    dataframe = pd.DataFrame(
+        [
+            raw_features
+        ]
     )
 
-    # Ensure every expected feature exists
+
+    # --------------------------------------------------------
+    # Ensure all expected model features exist
+    # --------------------------------------------------------
 
     for feature in FEATURE_COLUMNS:
 
-        if feature not in df.columns:
+        if (
+            feature
+            not in dataframe.columns
+        ):
 
-            df[feature] = 0
+            dataframe[
+                feature
+            ] = 0
 
-    # Keep exact model feature order
 
-    df = df[
+    # --------------------------------------------------------
+    # Exact training feature order
+    # --------------------------------------------------------
+
+    dataframe = dataframe[
         FEATURE_COLUMNS
     ].copy()
 
-    # Encode categorical columns
+
+    # --------------------------------------------------------
+    # Encode saved categorical columns
+    # --------------------------------------------------------
 
     for column in LABEL_ENCODERS.keys():
 
-        if column in df.columns:
+        if (
+            column
+            in dataframe.columns
+        ):
 
-            df[column] = df[column].apply(
-                lambda x: encode_value(
+            dataframe[
+                column
+            ] = dataframe[
+                column
+            ].apply(
+                lambda value:
+                encode_value(
                     column,
-                    x
+                    value
                 )
             )
 
-    # Convert remaining columns to numeric
 
-    for column in df.columns:
+    # --------------------------------------------------------
+    # Boolean conversion if boolean columns were not encoded
+    # --------------------------------------------------------
 
-        df[column] = pd.to_numeric(
-            df[column],
+    for column in [
+        "bpl_card",
+        "teaching"
+    ]:
+
+        if (
+            column
+            in dataframe.columns
+            and
+            column
+            not in LABEL_ENCODERS
+        ):
+
+            dataframe[
+                column
+            ] = dataframe[
+                column
+            ].astype(int)
+
+
+    # --------------------------------------------------------
+    # Numeric conversion
+    # --------------------------------------------------------
+
+    for column in dataframe.columns:
+
+        dataframe[
+            column
+        ] = pd.to_numeric(
+            dataframe[
+                column
+            ],
             errors="coerce"
         )
 
-    df = df.fillna(0)
 
-    return df
+    dataframe = dataframe.fillna(
+        0
+    )
+
+
+    return dataframe
+
+
+# ============================================================
+# SHOW FINAL MODEL CONFIGURATION
+# ============================================================
+
+with st.expander(
+    "ℹ️ Prediction Model Information"
+):
+
+    st.write(
+        "**Model:** Class-Weighted LightGBM"
+    )
+
+    st.write(
+        f"**Number of Features:** "
+        f"{len(FEATURE_COLUMNS)}"
+    )
+
+    st.write(
+        f"**Binary Readmission Threshold:** "
+        f"{FINAL_THRESHOLD:.2f}"
+    )
+
+    st.caption(
+        "The 0.55 threshold determines the binary "
+        "30-day readmission prediction. "
+        "Low, Moderate and High categories are "
+        "separate application-level risk bands."
+    )
 
 
 # ============================================================
@@ -1235,63 +1795,40 @@ predict_clicked = st.button(
 
 
 # ============================================================
-# RUN PREDICTION
+# RUN FINAL LIGHTGBM PREDICTION
 # ============================================================
 
 if predict_clicked:
 
     try:
 
-        model_input = prepare_model_input()
+        model_input = (
+            prepare_model_input()
+        )
 
-        # ----------------------------------------------------
-        # SCALE
-        # ----------------------------------------------------
 
-        try:
+        # ====================================================
+        # IMPORTANT:
+        # DO NOT APPLY StandardScaler HERE.
+        #
+        # The final Class-Weighted LightGBM was trained on
+        # the original encoded, unscaled feature matrix.
+        # ====================================================
 
-            scaled_input = SCALER.transform(
+        probabilities = (
+            model.predict_proba(
                 model_input
             )
+        )
 
-        except Exception:
+        probability = float(
+            probabilities[
+                0
+            ][
+                1
+            ]
+        )
 
-            scaled_input = model_input.values
-
-        # ----------------------------------------------------
-        # PREDICT
-        # ----------------------------------------------------
-
-        if hasattr(
-            model,
-            "predict_proba"
-        ):
-
-            probabilities = model.predict_proba(
-                scaled_input
-            )
-
-            probability = float(
-                probabilities[0][1]
-            )
-
-        else:
-
-            prediction = model.predict(
-                scaled_input
-            )
-
-            probability = float(
-                prediction[0]
-            )
-
-        # ----------------------------------------------------
-        # NORMALIZE PROBABILITY
-        # ----------------------------------------------------
-
-        if probability > 1:
-
-            probability = probability / 100.0
 
         probability = max(
             0.0,
@@ -1301,15 +1838,43 @@ if predict_clicked:
             )
         )
 
-        percentage = probability * 100.0
 
-        # ----------------------------------------------------
-        # RISK CLASSIFICATION
-        # ----------------------------------------------------
+        percentage = (
+            probability
+            *
+            100.0
+        )
 
-        if percentage >= 60:
+
+        # ====================================================
+        # FINAL BINARY READMISSION DECISION
+        # ====================================================
+
+        predicted_readmission = int(
+            probability
+            >=
+            FINAL_THRESHOLD
+        )
+
+
+        readmission_label = (
+            "Yes"
+            if predicted_readmission == 1
+            else "No"
+        )
+
+
+        # ====================================================
+        # APPLICATION RISK BANDS
+        # ====================================================
+        # These are display categories and are separate from
+        # the final 0.55 binary model threshold.
+        # ====================================================
+
+        if probability >= 0.60:
 
             risk_level = "High"
+
             risk_icon = "🔴"
 
             clinical_summary = (
@@ -1320,32 +1885,46 @@ if predict_clicked:
             )
 
             recommendations = [
+
                 "Discuss the assessment with the treating doctor.",
+
                 "Consider closer clinical monitoring.",
+
                 "Review discharge and follow-up planning.",
+
                 "Monitor relevant clinical risk factors."
+
             ]
 
-        elif percentage >= 30:
+
+        elif probability >= 0.30:
 
             risk_level = "Moderate"
+
             risk_icon = "🟠"
 
             clinical_summary = (
                 "The AI model indicates a moderate risk "
                 "of 30-day hospital readmission. "
-                "Additional clinical monitoring may be appropriate."
+                "Additional clinical monitoring "
+                "may be appropriate."
             )
 
             recommendations = [
+
                 "Discuss the assessment with the treating doctor.",
+
                 "Attend scheduled follow-up appointments.",
+
                 "Continue regular health monitoring."
+
             ]
+
 
         else:
 
             risk_level = "Low"
+
             risk_icon = "🟢"
 
             clinical_summary = (
@@ -1354,69 +1933,115 @@ if predict_clicked:
             )
 
             recommendations = [
+
                 "Continue following the healthcare plan.",
+
                 "Attend scheduled follow-up appointments.",
+
                 "Maintain regular health monitoring."
+
             ]
 
 
         # ====================================================
-        # SAVE PREDICTION CSV
+        # SAVE PREDICTION
         # ====================================================
 
-        prediction_file = os.path.join(
-            BASE_DIR,
-            "prediction_results.csv"
+        prediction_timestamp = (
+            datetime.now()
+            .isoformat()
         )
+
 
         prediction_record = {
 
             "timestamp":
-                datetime.now().isoformat(),
+                prediction_timestamp,
 
             "patient_id":
                 patient_id,
 
-            "risk_level":
-                risk_level,
+            "admission_id":
+                latest_admission_id,
 
+            "predicted_readmission":
+                predicted_readmission,
+
+            "readmission_label":
+                readmission_label,
+
+            # Main probability column used by dashboard
+            "risk_probability":
+                round(
+                    percentage,
+                    4
+                ),
+
+            # Retained for compatibility with older pages
             "readmission_probability":
                 round(
                     percentage,
                     4
                 ),
 
+            "binary_threshold":
+                round(
+                    FINAL_THRESHOLD,
+                    4
+                ),
+
+            "risk_level":
+                risk_level,
+
             "clinical_summary":
                 clinical_summary
+
         }
 
-        prediction_df = pd.DataFrame(
-            [prediction_record]
+
+        new_prediction = pd.DataFrame(
+            [
+                prediction_record
+            ]
         )
 
+
         if os.path.exists(
-            prediction_file
+            PREDICTION_FILE
         ):
 
             try:
 
-                old_predictions = pd.read_csv(
-                    prediction_file
+                existing_predictions = (
+                    pd.read_csv(
+                        PREDICTION_FILE
+                    )
                 )
+
 
                 prediction_df = pd.concat(
                     [
-                        old_predictions,
-                        prediction_df
+                        existing_predictions,
+                        new_prediction
                     ],
                     ignore_index=True
                 )
 
             except Exception:
-                pass
+
+                prediction_df = (
+                    new_prediction
+                )
+
+        else:
+
+            prediction_df = (
+                new_prediction
+            )
+
 
         prediction_df.to_csv(
-            prediction_file,
+            PREDICTION_FILE,
             index=False
         )
 
@@ -1429,13 +2054,20 @@ if predict_clicked:
             "last_prediction"
         ] = prediction_record
 
+
         st.session_state[
             "selected_patient_id"
         ] = patient_id
 
+
         st.session_state[
             "patient_id"
         ] = patient_id
+
+
+        st.session_state[
+            "last_model_input"
+        ] = model_input
 
 
         # ====================================================
@@ -1443,7 +2075,9 @@ if predict_clicked:
         # ====================================================
 
         blockchain_success = False
+
         blockchain_message = ""
+
 
         try:
 
@@ -1452,14 +2086,26 @@ if predict_clicked:
                 "patient_id":
                     patient_id,
 
-                "risk_level":
-                    risk_level,
+                "admission_id":
+                    latest_admission_id,
+
+                "predicted_readmission":
+                    predicted_readmission,
 
                 "readmission_probability":
                     round(
                         percentage,
                         4
                     ),
+
+                "binary_threshold":
+                    round(
+                        FINAL_THRESHOLD,
+                        4
+                    ),
+
+                "risk_level":
+                    risk_level,
 
                 "clinical_summary":
                     clinical_summary,
@@ -1468,26 +2114,48 @@ if predict_clicked:
                     recommendations,
 
                 "timestamp":
-                    datetime.now().isoformat(),
+                    prediction_timestamp,
 
                 "created_by":
                     st.session_state.get(
                         "username",
                         "doctor"
                     )
+
             }
+
 
             block = create_block(
                 "AI_PREDICTION",
                 blockchain_record
             )
 
+
             blockchain_success = True
 
-            blockchain_message = (
-                f"Blockchain block {block.get('block_index')} "
-                "created successfully."
+
+            block_index = (
+                block.get(
+                    "block_index",
+                    block.get(
+                        "index",
+                        "N/A"
+                    )
+                )
+                if isinstance(
+                    block,
+                    dict
+                )
+                else "N/A"
             )
+
+
+            blockchain_message = (
+                f"Blockchain block "
+                f"{block_index} "
+                f"created successfully."
+            )
+
 
         except Exception as blockchain_error:
 
@@ -1502,13 +2170,20 @@ if predict_clicked:
 
         st.markdown("---")
 
-        st.header("📊 Prediction Result")
+        st.header(
+            "📊 Prediction Result"
+        )
+
 
         st.success(
             "Prediction saved successfully."
         )
 
-        c1, c2, c3 = st.columns(3)
+
+        c1, c2, c3, c4 = st.columns(
+            4
+        )
+
 
         with c1:
 
@@ -1517,6 +2192,7 @@ if predict_clicked:
                 risk_level
             )
 
+
         with c2:
 
             st.metric(
@@ -1524,17 +2200,57 @@ if predict_clicked:
                 f"{percentage:.2f}%"
             )
 
+
         with c3:
 
             st.metric(
-                "Patient ID",
-                patient_id
+                "30-Day Readmission",
+                readmission_label
+            )
+
+
+        with c4:
+
+            st.metric(
+                "Model Threshold",
+                f"{FINAL_THRESHOLD:.2f}"
             )
 
 
         st.markdown(
-            f"# {risk_icon} {risk_level} Risk"
+            f"# {risk_icon} "
+            f"{risk_level} Risk"
         )
+
+
+        st.caption(
+            f"Patient ID: {patient_id}"
+        )
+
+
+        # ====================================================
+        # BINARY MODEL INTERPRETATION
+        # ====================================================
+
+        if predicted_readmission == 1:
+
+            st.warning(
+                "The final Class-Weighted LightGBM "
+                "model classifies this patient as "
+                "predicted for 30-day readmission "
+                f"at the {FINAL_THRESHOLD:.2f} "
+                "operating threshold."
+            )
+
+        else:
+
+            st.info(
+                "The final Class-Weighted LightGBM "
+                "model does not classify this patient "
+                "as predicted for 30-day readmission "
+                f"at the {FINAL_THRESHOLD:.2f} "
+                "operating threshold."
+            )
 
 
         # ====================================================
@@ -1558,6 +2274,7 @@ if predict_clicked:
             "💡 Recommendations"
         )
 
+
         for recommendation in recommendations:
 
             st.write(
@@ -1575,22 +2292,29 @@ if predict_clicked:
             "🔗 Blockchain Audit Record"
         )
 
+
         if blockchain_success:
 
             st.success(
                 blockchain_message
             )
 
+
             try:
 
-                verification = verify_blockchain()
+                verification = (
+                    verify_blockchain()
+                )
+
 
                 if isinstance(
                     verification,
                     tuple
                 ):
 
-                    valid, message = verification
+                    valid, message = (
+                        verification
+                    )
 
                 else:
 
@@ -1601,6 +2325,7 @@ if predict_clicked:
                     message = (
                         "Blockchain verification completed."
                     )
+
 
                 if valid:
 
@@ -1614,22 +2339,28 @@ if predict_clicked:
                         f"✗ {message}"
                     )
 
+
             except Exception as verification_error:
 
                 st.warning(
                     "Blockchain record was created, "
-                    "but verification could not be completed."
+                    "but verification could not "
+                    "be completed."
                 )
 
                 st.caption(
-                    str(verification_error)
+                    str(
+                        verification_error
+                    )
                 )
+
 
         else:
 
             st.warning(
-                "Prediction was saved, but the blockchain "
-                "record could not be created."
+                "Prediction was saved, but the "
+                "blockchain audit record could "
+                "not be created."
             )
 
             st.code(
@@ -1647,7 +2378,11 @@ if predict_clicked:
             "📋 Continue Clinical Workflow"
         )
 
-        c1, c2, c3 = st.columns(3)
+
+        c1, c2, c3 = st.columns(
+            3
+        )
+
 
         with c1:
 
@@ -1657,6 +2392,7 @@ if predict_clicked:
                 use_container_width=True
             )
 
+
         with c2:
 
             st.page_link(
@@ -1664,6 +2400,7 @@ if predict_clicked:
                 label="🔬 Open SHAP / XAI",
                 use_container_width=True
             )
+
 
         with c3:
 
