@@ -1,27 +1,47 @@
-import streamlit as st
 import os
+
 import pandas as pd
+import streamlit as st
 
 from auth import require_role, logout
 from config.theme import apply_theme
+
 
 # ============================================================
 # PAGE CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="CareWatch-AI | Analytics",
+    page_title="CareWatch-AI | Admin Analytics",
     page_icon="📊",
     layout="wide"
 )
 
 apply_theme()
 
+
 # ============================================================
 # ACCESS CONTROL
 # ============================================================
 
 require_role(["Admin"])
+
+
+# ============================================================
+# PATHS
+# ============================================================
+
+BASE_DIR = os.path.dirname(
+    os.path.dirname(
+        os.path.abspath(__file__)
+    )
+)
+
+PREDICTION_FILE = os.path.join(
+    BASE_DIR,
+    "prediction_results.csv"
+)
+
 
 # ============================================================
 # SESSION
@@ -32,30 +52,45 @@ username = st.session_state.get(
     "Admin"
 )
 
+
 # ============================================================
 # HEADER
 # ============================================================
 
-col1, col2 = st.columns([5, 1])
+header_col, logout_col = st.columns(
+    [5, 1]
+)
 
-with col1:
 
-    st.title("🏥 CareWatch-AI")
+with header_col:
+
+    st.title(
+        "🏥 CareWatch-AI"
+    )
+
     st.caption(
         "AI-Based Clinical Decision Support System"
     )
 
-with col2:
+
+with logout_col:
+
+    st.write("")
 
     if st.button(
-        "Logout",
+        "🚪 Logout",
         use_container_width=True
     ):
+
         logout()
+
 
 st.divider()
 
-st.title("📊 Admin Analytics Dashboard")
+
+st.title(
+    "📊 Admin Analytics Dashboard"
+)
 
 st.success(
     f"Welcome, {username.title()}!"
@@ -68,13 +103,14 @@ st.write(
 
 st.divider()
 
+
 # ============================================================
-# LOAD DATA
+# LOAD PREDICTION DATA
 # ============================================================
 
-result_file = "prediction_results.csv"
-
-if not os.path.exists(result_file):
+if not os.path.exists(
+    PREDICTION_FILE
+):
 
     st.warning(
         "No prediction data is available yet."
@@ -87,29 +123,32 @@ if not os.path.exists(result_file):
 
     st.stop()
 
-# ============================================================
-# READ CSV
-# ============================================================
 
 try:
 
     results = pd.read_csv(
-        result_file
+        PREDICTION_FILE
     )
 
-except Exception as e:
+except Exception as error:
 
     st.error(
-        f"Unable to read prediction data: {e}"
+        f"Unable to read prediction data: {error}"
     )
 
     st.stop()
+
 
 # ============================================================
 # CHECK REQUIRED COLUMN
 # ============================================================
 
-if "patient_id" not in results.columns:
+if (
+    results.empty
+    or
+    "patient_id"
+    not in results.columns
+):
 
     st.error(
         "patient_id column is missing "
@@ -118,39 +157,145 @@ if "patient_id" not in results.columns:
 
     st.stop()
 
+
 # ============================================================
-# CLEAN DATA
+# CLEAN PATIENT IDS
 # ============================================================
 
-results["patient_id"] = (
-    results["patient_id"]
+results[
+    "patient_id"
+] = (
+    results[
+        "patient_id"
+    ]
     .astype(str)
     .str.strip()
 )
 
+
 # ============================================================
-# RISK LEVEL CLEANING
+# NORMALIZE RISK LEVEL
 # ============================================================
 
-if "risk_level" in results.columns:
+if (
+    "risk_level"
+    in results.columns
+):
 
-    results["risk_level"] = (
-        results["risk_level"]
+    results[
+        "risk_level"
+    ] = (
+        results[
+            "risk_level"
+        ]
         .astype(str)
         .str.strip()
         .str.title()
     )
 
+
 # ============================================================
-# RISK PROBABILITY
+# NORMALIZE READMISSION PROBABILITY
+# ============================================================
+# New prediction records may store:
+# 32.45  -> already a percentage
+#
+# Older records may store:
+# 0.3245 -> probability fraction
+#
+# Convert each row individually to a percentage in 0-100.
 # ============================================================
 
-if "risk_probability" in results.columns:
+if (
+    "risk_probability"
+    in results.columns
+):
 
-    results["risk_probability"] = pd.to_numeric(
-        results["risk_probability"],
+    probability_series = pd.to_numeric(
+        results[
+            "risk_probability"
+        ],
         errors="coerce"
     )
+
+
+elif (
+    "readmission_probability"
+    in results.columns
+):
+
+    probability_series = pd.to_numeric(
+        results[
+            "readmission_probability"
+        ],
+        errors="coerce"
+    )
+
+
+else:
+
+    probability_series = pd.Series(
+        [pd.NA] * len(results),
+        index=results.index,
+        dtype="Float64"
+    )
+
+
+results[
+    "risk_probability"
+] = probability_series.apply(
+    lambda value:
+    (
+        value * 100
+        if pd.notna(value)
+        and 0 <= value <= 1
+        else value
+    )
+)
+
+
+results[
+    "risk_probability"
+] = pd.to_numeric(
+    results[
+        "risk_probability"
+    ],
+    errors="coerce"
+).clip(
+    lower=0,
+    upper=100
+)
+
+
+# ============================================================
+# NORMALIZE TIMESTAMP
+# ============================================================
+
+if (
+    "timestamp"
+    in results.columns
+):
+
+    results[
+        "_prediction_time"
+    ] = pd.to_datetime(
+        results[
+            "timestamp"
+        ],
+        errors="coerce"
+    )
+
+    results = results.sort_values(
+        [
+            "patient_id",
+            "_prediction_time"
+        ],
+        ascending=[
+            True,
+            True
+        ]
+    )
+
 
 # ============================================================
 # USE LATEST PREDICTION PER PATIENT
@@ -163,69 +308,139 @@ latest_results = (
         as_index=False
     )
     .tail(1)
-    .reset_index(drop=True)
+    .reset_index(
+        drop=True
+    )
 )
+
 
 # ============================================================
 # BASIC COUNTS
 # ============================================================
 
 total_patients = (
-    latest_results["patient_id"]
+    latest_results[
+        "patient_id"
+    ]
     .nunique()
 )
+
 
 high_risk = 0
 moderate_risk = 0
 low_risk = 0
 
-if "risk_level" in latest_results.columns:
 
-    high_risk = (
-        latest_results["risk_level"]
+if (
+    "risk_level"
+    in latest_results.columns
+):
+
+    risk_lower = (
+        latest_results[
+            "risk_level"
+        ]
+        .astype(str)
+        .str.strip()
         .str.lower()
-        .eq("high")
-        .sum()
     )
 
-    moderate_risk = (
-        latest_results["risk_level"]
-        .str.lower()
-        .eq("moderate")
-        .sum()
+
+    high_risk = int(
+        (
+            risk_lower
+            ==
+            "high"
+        ).sum()
     )
 
-    low_risk = (
-        latest_results["risk_level"]
-        .str.lower()
-        .eq("low")
-        .sum()
+
+    moderate_risk = int(
+        (
+            risk_lower
+            ==
+            "moderate"
+        ).sum()
     )
+
+
+    low_risk = int(
+        (
+            risk_lower
+            ==
+            "low"
+        ).sum()
+    )
+
 
 # ============================================================
-# AVERAGE PROBABILITY
+# PREDICTED READMISSION COUNT
+# ============================================================
+
+predicted_readmission_count = 0
+
+
+if (
+    "predicted_readmission"
+    in latest_results.columns
+):
+
+    binary_prediction = pd.to_numeric(
+        latest_results[
+            "predicted_readmission"
+        ],
+        errors="coerce"
+    )
+
+    predicted_readmission_count = int(
+        (
+            binary_prediction
+            ==
+            1
+        ).sum()
+    )
+
+
+# ============================================================
+# AVERAGE READMISSION RISK
 # ============================================================
 
 average_probability = 0.0
 
-if "risk_probability" in latest_results.columns:
 
-    average_probability = (
-        latest_results["risk_probability"]
-        .mean()
+if (
+    "risk_probability"
+    in latest_results.columns
+):
+
+    valid_probability = (
+        latest_results[
+            "risk_probability"
+        ]
+        .dropna()
     )
 
-    if pd.isna(average_probability):
 
-        average_probability = 0.0
+    if not valid_probability.empty:
+
+        average_probability = float(
+            valid_probability.mean()
+        )
+
 
 # ============================================================
-# DASHBOARD METRICS
+# KEY HEALTHCARE METRICS
 # ============================================================
 
-st.header("📌 Key Healthcare Metrics")
+st.header(
+    "📌 Key Healthcare Metrics"
+)
 
-c1, c2, c3, c4, c5 = st.columns(5)
+
+c1, c2, c3, c4, c5, c6 = st.columns(
+    6
+)
+
 
 with c1:
 
@@ -234,6 +449,7 @@ with c1:
         total_patients
     )
 
+
 with c2:
 
     st.metric(
@@ -241,12 +457,14 @@ with c2:
         high_risk
     )
 
+
 with c3:
 
     st.metric(
-        "🟡 Moderate Risk",
+        "🟠 Moderate Risk",
         moderate_risk
     )
+
 
 with c4:
 
@@ -255,40 +473,101 @@ with c4:
         low_risk
     )
 
+
 with c5:
 
     st.metric(
-        "📊 Avg Readmission Risk",
-        f"{average_probability * 100:.2f}%"
+        "⚠️ Predicted Readmission",
+        predicted_readmission_count
     )
 
+
+with c6:
+
+    st.metric(
+        "📊 Avg Readmission Risk",
+        f"{average_probability:.2f}%"
+    )
+
+
+# ============================================================
+# MODEL INFORMATION
+# ============================================================
+
+with st.expander(
+    "ℹ️ Final Prediction Model"
+):
+
+    st.write(
+        "**Model:** Class-Weighted LightGBM"
+    )
+
+    st.write(
+        "**Number of Input Features:** 27"
+    )
+
+    st.write(
+        "**Binary Readmission Threshold:** 0.55"
+    )
+
+    st.caption(
+        "The 0.55 threshold determines the binary "
+        "30-day readmission prediction. "
+        "Low, Moderate and High risk levels are "
+        "separate probability-based interface categories."
+    )
+
+
 st.divider()
+
 
 # ============================================================
 # RISK DISTRIBUTION
 # ============================================================
 
-st.header("📊 Risk Distribution")
+st.header(
+    "📊 Risk Distribution"
+)
 
-if "risk_level" in latest_results.columns:
+
+if (
+    "risk_level"
+    in latest_results.columns
+):
 
     risk_counts = (
-        latest_results["risk_level"]
+        latest_results[
+            "risk_level"
+        ]
         .value_counts()
     )
 
+
     risk_chart = pd.DataFrame(
         {
-            "Risk Level": risk_counts.index,
-            "Patients": risk_counts.values
+            "Risk Level":
+                risk_counts.index,
+
+            "Patients":
+                risk_counts.values
         }
     )
 
-    st.bar_chart(
-        risk_chart.set_index(
-            "Risk Level"
+
+    if not risk_chart.empty:
+
+        st.bar_chart(
+            risk_chart.set_index(
+                "Risk Level"
+            )
         )
-    )
+
+    else:
+
+        st.info(
+            "No risk-level records are available."
+        )
+
 
 else:
 
@@ -296,90 +575,23 @@ else:
         "Risk-level data is not available."
     )
 
-st.divider()
-
-# ============================================================
-# DIAGNOSIS DISTRIBUTION
-# ============================================================
-
-st.header("🩺 Diagnosis Distribution")
-
-if "primary_diagnosis" in latest_results.columns:
-
-    diagnosis_counts = (
-        latest_results[
-            "primary_diagnosis"
-        ]
-        .fillna("Not specified")
-        .astype(str)
-        .value_counts()
-        .head(10)
-    )
-
-    diagnosis_chart = pd.DataFrame(
-        {
-            "Diagnosis": diagnosis_counts.index,
-            "Patients": diagnosis_counts.values
-        }
-    )
-
-    st.bar_chart(
-        diagnosis_chart.set_index(
-            "Diagnosis"
-        )
-    )
-
-else:
-
-    st.info(
-        "Diagnosis data is not available."
-    )
 
 st.divider()
 
-# ============================================================
-# STATE DISTRIBUTION
-# ============================================================
-
-st.header("📍 Patient Distribution by State")
-
-if "state" in latest_results.columns:
-
-    state_counts = (
-        latest_results["state"]
-        .fillna("Not specified")
-        .astype(str)
-        .value_counts()
-    )
-
-    state_chart = pd.DataFrame(
-        {
-            "State": state_counts.index,
-            "Patients": state_counts.values
-        }
-    )
-
-    st.bar_chart(
-        state_chart.set_index(
-            "State"
-        )
-    )
-
-else:
-
-    st.info(
-        "State information is not available."
-    )
-
-st.divider()
 
 # ============================================================
-# RISK PROBABILITY DISTRIBUTION
+# READMISSION PROBABILITY DISTRIBUTION
 # ============================================================
 
-st.header("📈 Readmission Probability")
+st.header(
+    "📈 Readmission Probability"
+)
 
-if "risk_probability" in latest_results.columns:
+
+if (
+    "risk_probability"
+    in latest_results.columns
+):
 
     probability_data = (
         latest_results[
@@ -388,16 +600,24 @@ if "risk_probability" in latest_results.columns:
                 "risk_probability"
             ]
         ]
+        .dropna(
+            subset=[
+                "risk_probability"
+            ]
+        )
         .copy()
     )
+
 
     probability_data[
         "risk_probability"
     ] = (
         probability_data[
             "risk_probability"
-        ] * 100
-    ).round(2)
+        ]
+        .round(2)
+    )
+
 
     probability_data = (
         probability_data
@@ -408,16 +628,36 @@ if "risk_probability" in latest_results.columns:
         .head(20)
     )
 
+
     probability_data = (
         probability_data
-        .set_index("patient_id")
+        .rename(
+            columns={
+                "risk_probability":
+                    "Readmission Risk (%)"
+            }
+        )
+        .set_index(
+            "patient_id"
+        )
     )
 
-    st.bar_chart(
-        probability_data[
-            "risk_probability"
-        ]
-    )
+
+    if not probability_data.empty:
+
+        st.bar_chart(
+            probability_data[
+                "Readmission Risk (%)"
+            ]
+        )
+
+    else:
+
+        st.info(
+            "No valid readmission probability "
+            "values are available."
+        )
+
 
 else:
 
@@ -426,39 +666,57 @@ else:
         "is not available."
     )
 
+
 st.divider()
+
 
 # ============================================================
 # HIGH-RISK PATIENTS
 # ============================================================
 
-st.header("🔴 High-Risk Patients")
+st.header(
+    "🔴 High-Risk Patients"
+)
 
-if "risk_level" in latest_results.columns:
+
+if (
+    "risk_level"
+    in latest_results.columns
+):
 
     high_risk_patients = latest_results[
-        latest_results["risk_level"]
+        latest_results[
+            "risk_level"
+        ]
+        .astype(str)
         .str.lower()
-        .eq("high")
+        .eq(
+            "high"
+        )
     ].copy()
+
 
     if not high_risk_patients.empty:
 
         columns_to_show = [
             "patient_id",
-            "age",
-            "gender",
-            "state",
             "risk_level",
             "risk_probability",
-            "primary_diagnosis"
+            "readmission_label",
+            "predicted_readmission",
+            "binary_threshold",
+            "timestamp"
         ]
+
 
         available_columns = [
             column
-            for column in columns_to_show
-            if column in high_risk_patients.columns
+            for column
+            in columns_to_show
+            if column
+            in high_risk_patients.columns
         ]
+
 
         high_display = (
             high_risk_patients[
@@ -467,25 +725,52 @@ if "risk_level" in latest_results.columns:
             .copy()
         )
 
-        if "risk_probability" in high_display.columns:
+
+        if (
+            "risk_probability"
+            in high_display.columns
+        ):
 
             high_display[
                 "risk_probability"
             ] = (
                 high_display[
                     "risk_probability"
-                ] * 100
-            ).round(2)
-
-            high_display = (
-                high_display
-                .rename(
-                    columns={
-                        "risk_probability":
-                        "Readmission Risk (%)"
-                    }
-                )
+                ]
+                .round(2)
             )
+
+
+        high_display = (
+            high_display
+            .rename(
+                columns={
+
+                    "patient_id":
+                        "Patient ID",
+
+                    "risk_level":
+                        "Risk Level",
+
+                    "risk_probability":
+                        "Readmission Risk (%)",
+
+                    "readmission_label":
+                        "30-Day Readmission",
+
+                    "predicted_readmission":
+                        "Binary Prediction",
+
+                    "binary_threshold":
+                        "Model Threshold",
+
+                    "timestamp":
+                        "Prediction Time"
+
+                }
+            )
+        )
+
 
         st.dataframe(
             high_display,
@@ -493,11 +778,14 @@ if "risk_level" in latest_results.columns:
             hide_index=True
         )
 
+
     else:
 
         st.success(
-            "No high-risk patients currently identified."
+            "No high-risk patients "
+            "are currently identified."
         )
+
 
 else:
 
@@ -505,32 +793,38 @@ else:
         "Risk-level information is unavailable."
     )
 
+
 st.divider()
 
+
 # ============================================================
-# COMPLETE PATIENT TABLE
+# COMPLETE PATIENT RISK OVERVIEW
 # ============================================================
 
-st.header("📋 Patient Risk Overview")
+st.header(
+    "📋 Patient Risk Overview"
+)
+
 
 columns_to_show = [
     "patient_id",
-    "age",
-    "gender",
-    "state",
     "risk_level",
     "risk_probability",
-    "primary_diagnosis",
-    "primary_category",
-    "charlson_index",
-    "previous_admissions"
+    "readmission_label",
+    "predicted_readmission",
+    "binary_threshold",
+    "timestamp"
 ]
+
 
 available_columns = [
     column
-    for column in columns_to_show
-    if column in latest_results.columns
+    for column
+    in columns_to_show
+    if column
+    in latest_results.columns
 ]
+
 
 overview = (
     latest_results[
@@ -539,22 +833,49 @@ overview = (
     .copy()
 )
 
-if "risk_probability" in overview.columns:
+
+if (
+    "risk_probability"
+    in overview.columns
+):
 
     overview[
         "risk_probability"
     ] = (
         overview[
             "risk_probability"
-        ] * 100
-    ).round(2)
-
-    overview = overview.rename(
-        columns={
-            "risk_probability":
-            "Readmission Risk (%)"
-        }
+        ]
+        .round(2)
     )
+
+
+overview = overview.rename(
+    columns={
+
+        "patient_id":
+            "Patient ID",
+
+        "risk_level":
+            "Risk Level",
+
+        "risk_probability":
+            "Readmission Risk (%)",
+
+        "readmission_label":
+            "30-Day Readmission",
+
+        "predicted_readmission":
+            "Binary Prediction",
+
+        "binary_threshold":
+            "Model Threshold",
+
+        "timestamp":
+            "Prediction Time"
+
+    }
+)
+
 
 st.dataframe(
     overview,
@@ -562,22 +883,33 @@ st.dataframe(
     hide_index=True
 )
 
+
 st.divider()
+
 
 # ============================================================
 # DATASET SUMMARY
 # ============================================================
 
-st.header("📄 Dataset Summary")
+st.header(
+    "📄 Prediction Dataset Summary"
+)
 
-c1, c2, c3 = st.columns(3)
+
+c1, c2, c3 = st.columns(
+    3
+)
+
 
 with c1:
 
     st.metric(
         "Prediction Records",
-        len(results)
+        len(
+            results
+        )
     )
+
 
 with c2:
 
@@ -586,18 +918,68 @@ with c2:
         total_patients
     )
 
+
 with c3:
 
-    st.metric(
-        "Available States",
-        (
-            latest_results["state"]
-            .nunique()
-            if "state"
-            in latest_results.columns
-            else 0
+    latest_timestamp = "N/A"
+
+    if (
+        "_prediction_time"
+        in results.columns
+    ):
+
+        valid_dates = (
+            results[
+                "_prediction_time"
+            ]
+            .dropna()
         )
+
+
+        if not valid_dates.empty:
+
+            latest_timestamp = (
+                valid_dates
+                .max()
+                .strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+            )
+
+
+    st.metric(
+        "Latest Prediction",
+        latest_timestamp
     )
+
+
+# ============================================================
+# ANALYTICS EXPLANATION
+# ============================================================
+
+st.divider()
+
+st.header(
+    "ℹ️ Analytics Interpretation"
+)
+
+
+st.markdown(
+    """
+The Admin Analytics Dashboard summarizes the **latest saved
+prediction for each patient**.
+
+- **High / Moderate / Low Risk** represent the application's
+  probability-based risk categories.
+- **Predicted Readmission** represents the final binary
+  Class-Weighted LightGBM decision.
+- The binary decision uses the optimized **0.55 threshold**.
+- **Average Readmission Risk** is calculated from normalized
+  patient probability percentages and therefore remains
+  within the valid **0–100% range**.
+"""
+)
+
 
 # ============================================================
 # ADMIN NOTICE
@@ -605,10 +987,16 @@ with c3:
 
 st.divider()
 
+
 st.warning(
     "⚠️ Analytics are generated from the available "
-    "prediction data. These statistics are intended "
-    "for healthcare system monitoring and decision "
-    "support and should not be interpreted as "
-    "independent clinical decisions."
+    "prediction records. These statistics are intended "
+    "for healthcare system monitoring and decision support "
+    "and should not be interpreted as independent "
+    "clinical decisions."
+)
+
+
+st.caption(
+    "CareWatch-AI | Administrator Analytics Portal"
 )

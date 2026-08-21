@@ -130,12 +130,40 @@ else:
         recent["_sort_time"]=pd.to_datetime(recent["timestamp"],errors="coerce")
         recent=recent.sort_values("_sort_time",ascending=False).drop(columns="_sort_time")
 
-    if "readmission_probability" in recent.columns:
-        probability=pd.to_numeric(recent["readmission_probability"],errors="coerce")
-        if not probability.dropna().empty and probability.dropna().max()<=1:
-            probability=probability*100
-        recent["readmission_probability"]=probability.round(2).astype(str)+"%"
+    # =========================================================
+    # SAFE PROBABILITY FORMATTING
+    # =========================================================
 
+    if "readmission_probability" in recent.columns:
+
+        probability = pd.to_numeric(
+            recent["readmission_probability"],
+            errors="coerce"
+        )
+
+        # Convert values stored as fractions (0–1)
+        # while leaving values already stored as percentages alone.
+        probability = probability.apply(
+            lambda value:
+            value * 100
+            if pd.notna(value) and 0 <= value <= 1
+            else value
+        )
+
+        # Prevent invalid displayed percentages
+        probability = probability.clip(
+            lower=0,
+            upper=100
+        )
+
+        recent["readmission_probability"] = (
+            probability.apply(
+                lambda value:
+                f"{value:.2f}%"
+                if pd.notna(value)
+                else "N/A"
+            )
+        )
     st.dataframe(recent.head(10),use_container_width=True,hide_index=True)
 
 # =========================================================
